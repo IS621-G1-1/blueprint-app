@@ -1,9 +1,24 @@
-import { Link, NavLink } from "react-router-dom";
-import { useAuth } from "react-oidc-context";
+import { Link, NavLink, useNavigate } from "react-router-dom";
+import { useAuth } from "@/auth/AuthContext";
+import { useEffect, useState } from "react";
+import { apiFetch } from "@/api/client";
+
+type Me = { name: string; email: string };
 
 export function TopNav() {
   const auth = useAuth();
-  const userName = auth.user?.profile.name ?? auth.user?.profile.email ?? "user";
+  const navigate = useNavigate();
+  const [me, setMe] = useState<Me | null>(null);
+
+  useEffect(() => {
+    if (!auth.isAuthenticated) return;
+    apiFetch<Me>("/me", auth.getAccessToken).then(setMe).catch(() => setMe(null));
+  }, [auth.isAuthenticated, auth.getAccessToken]);
+
+  const handleLogout = async () => {
+    await auth.logout();
+    navigate("/login", { replace: true });
+  };
 
   return (
     <nav className="border-b border-slate-800 bg-slate-950/60 backdrop-blur">
@@ -31,20 +46,14 @@ export function TopNav() {
             Account
           </NavLink>
 
-          {auth.isAuthenticated && (
-            <>
-              <span className="text-sm text-slate-500">{userName}</span>
-              <button
-                type="button"
-                onClick={() =>
-                  auth.signoutRedirect({ post_logout_redirect_uri: `${window.location.origin}/login` })
-                }
-                className="rounded border border-slate-700 px-3 py-1 text-sm text-slate-200 hover:bg-slate-800"
-              >
-                Sign out
-              </button>
-            </>
-          )}
+          {me && <span className="text-sm text-slate-500">{me.name}</span>}
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="rounded border border-slate-700 px-3 py-1 text-sm text-slate-200 hover:bg-slate-800"
+          >
+            Sign out
+          </button>
         </div>
       </div>
     </nav>

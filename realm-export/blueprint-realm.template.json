@@ -3,9 +3,9 @@
   "enabled": true,
   "displayName": "Blueprint",
 
-  "registrationAllowed": true,
+  "registrationAllowed": false,
   "registrationEmailAsUsername": false,
-  "verifyEmail": true,
+  "verifyEmail": false,
   "loginWithEmailAllowed": true,
   "duplicateEmailsAllowed": false,
   "resetPasswordAllowed": true,
@@ -31,26 +31,30 @@
   "clients": [
     {
       "clientId": "blueprint-app-frontend",
-      "name": "Blueprint Frontend (SPA)",
+      "name": "Blueprint Frontend (SPA — placeholder)",
+      "description": "Reserved for future use if the app moves to OIDC redirect flow. Not used today; the backend brokers the password grant via blueprint-app-backend.",
       "enabled": true,
       "publicClient": true,
-      "standardFlowEnabled": true,
+      "standardFlowEnabled": false,
       "directAccessGrantsEnabled": false,
       "implicitFlowEnabled": false,
-      "serviceAccountsEnabled": false,
-      "redirectUris": [
-        "http://localhost:5173/*"
-      ],
-      "webOrigins": [
-        "http://localhost:5173"
-      ],
-      "attributes": {
-        "post.logout.redirect.uris": "http://localhost:5173/*",
-        "pkce.code.challenge.method": "S256"
-      },
+      "serviceAccountsEnabled": false
+    },
+    {
+      "clientId": "blueprint-app-backend",
+      "name": "Blueprint Backend",
+      "description": "Confidential client. Three roles: validate inbound JWTs (bearer), broker password grant for /auth/login, and call admin API via service account for user management.",
+      "enabled": true,
+      "secret": "${BACKEND_CLIENT_SECRET}",
+      "publicClient": false,
+      "bearerOnly": false,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": true,
       "protocolMappers": [
         {
-          "name": "audience-blueprint-app-backend",
+          "name": "audience-self",
           "protocol": "openid-connect",
           "protocolMapper": "oidc-audience-mapper",
           "consentRequired": false,
@@ -61,17 +65,21 @@
           }
         }
       ]
-    },
+    }
+  ],
+
+  "users": [
     {
-      "clientId": "blueprint-app-backend",
-      "name": "Blueprint Backend (Bearer-only)",
+      "username": "service-account-blueprint-app-backend",
       "enabled": true,
-      "publicClient": false,
-      "bearerOnly": true,
-      "standardFlowEnabled": false,
-      "directAccessGrantsEnabled": false,
-      "implicitFlowEnabled": false,
-      "serviceAccountsEnabled": false
+      "serviceAccountClientId": "blueprint-app-backend",
+      "clientRoles": {
+        "realm-management": [
+          "manage-users",
+          "view-users",
+          "query-users"
+        ]
+      }
     }
   ]
 }

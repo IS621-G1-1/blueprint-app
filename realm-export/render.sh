@@ -43,7 +43,12 @@ case "${EMAIL_PROVIDER:-mailpit}" in
     ;;
 esac
 
-envsubst '$SMTP_HOST $SMTP_PORT $SMTP_USER $SMTP_PASSWORD $SMTP_AUTH $SMTP_STARTTLS $SMTP_FROM_EMAIL' \
+# Backend client secret — required so the backend can authenticate to Keycloak
+# for the password-grant + service-account flows.
+: "${BACKEND_CLIENT_SECRET:?BACKEND_CLIENT_SECRET required (see .env.example)}"
+export BACKEND_CLIENT_SECRET
+
+envsubst '$SMTP_HOST $SMTP_PORT $SMTP_USER $SMTP_PASSWORD $SMTP_AUTH $SMTP_STARTTLS $SMTP_FROM_EMAIL $BACKEND_CLIENT_SECRET' \
   < /template/blueprint-realm.template.json \
   > /out/blueprint-realm.json
 

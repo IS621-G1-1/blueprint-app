@@ -50,6 +50,7 @@ services:
       SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-noreply@blueprint.local}
       SENDGRID_API_KEY: ${SENDGRID_API_KEY:-}
       SENDGRID_FROM_EMAIL: ${SENDGRID_FROM_EMAIL:-}
+      BACKEND_CLIENT_SECRET: ${BACKEND_CLIENT_SECRET:?BACKEND_CLIENT_SECRET required (see .env.example)}
     volumes:
       - ./realm-export:/template:ro
       - realm_import:/out
@@ -105,6 +106,14 @@ services:
       KEYCLOAK_ISSUER: http://localhost:8080/realms/blueprint
       KEYCLOAK_JWKS_URI: http://keycloak:8080/realms/blueprint/protocol/openid-connect/certs
       KEYCLOAK_AUDIENCE: blueprint-app-backend
+
+      # Backend's confidential-client identity. Used to:
+      #   - call /token with grant_type=password (login broker)
+      #   - call /token with grant_type=client_credentials (service-account → admin API)
+      KEYCLOAK_BASE_URL: http://keycloak:8080
+      KEYCLOAK_REALM: blueprint
+      KEYCLOAK_CLIENT_ID: blueprint-app-backend
+      KEYCLOAK_CLIENT_SECRET: ${BACKEND_CLIENT_SECRET}
     ports:
       - "4000:4000"
     depends_on:
@@ -125,12 +134,9 @@ services:
     build:
       context: ./client
       dockerfile: Dockerfile
-      # Vite inlines VITE_* at build time. These mirror client/.env.example.
-      # All four are baked into the static bundle served by nginx.
+      # Vite inlines VITE_* at build time. The frontend never talks to Keycloak
+      # directly — the backend brokers all auth — so it only needs the API URL.
       args:
-        VITE_KEYCLOAK_URL: http://localhost:8080
-        VITE_KEYCLOAK_REALM: blueprint
-        VITE_KEYCLOAK_CLIENT_ID: blueprint-app-frontend
         VITE_API_URL: http://localhost:4000
     container_name: blueprint-app-client
     ports:

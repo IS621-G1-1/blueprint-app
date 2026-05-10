@@ -3,6 +3,7 @@ import express from "express";
 import cors from "cors";
 import healthRoutes from "./routes/health.routes.js";
 import meRoutes from "./routes/me.routes.js";
+import authRoutes from "./routes/auth.routes.js";
 
 const app = express();
 const PORT = Number(process.env.PORT ?? 4000);
@@ -12,6 +13,7 @@ app.use(express.json());
 app.use(cors({ origin: CLIENT_ORIGIN, credentials: true }));
 
 app.use("/health", healthRoutes);
+app.use("/auth", authRoutes);
 app.use("/me", meRoutes);
 
 // Final error handler. JWT errors from express-oauth2-jwt-bearer surface as 401 with
