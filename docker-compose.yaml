@@ -1,0 +1,149 @@
+# Full local dev stack for blueprint-app.
+#
+# Services (top → bottom): postgres, mailpit, realm-render (init), keycloak, server, client.
+# All five long-running services + a one-shot init container.
+#
+# Engineer flow: `cp .env.example .env`, fill in passwords, then `docker compose up -d`.
+# See README.md for the browser walk-through that proves end-to-end auth.
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: blueprint-app-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER required (see .env.example)}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required}
+      # No POSTGRES_DB — the init script below creates the two databases we need.
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/postgres-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      # Host-exposed for `psql` access during debugging. Internal name is `postgres`.
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - blueprint
+
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: blueprint-app-mailpit
+    # Always running. ~30MB, near-zero idle CPU. Simpler than profile-gating.
+    # When EMAIL_PROVIDER=sendgrid, this just sits there unused.
+    ports:
+      - "8025:8025"  # web UI
+      - "1025:1025"  # SMTP (used by Keycloak when EMAIL_PROVIDER=mailpit)
+    networks:
+      - blueprint
+
+  # One-shot init container: renders the realm template with the right SMTP block
+  # for the chosen EMAIL_PROVIDER and writes the result to a shared volume that
+  # Keycloak imports from. Exits 0 before Keycloak is allowed to start.
+  realm-render:
+    image: alpine:3
+    container_name: blueprint-app-realm-render
+    environment:
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER:-mailpit}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-noreply@blueprint.local}
+      SENDGRID_API_KEY: ${SENDGRID_API_KEY:-}
+      SENDGRID_FROM_EMAIL: ${SENDGRID_FROM_EMAIL:-}
+    volumes:
+      - ./realm-export:/template:ro
+      - realm_import:/out
+    command: ["sh", "/template/render.sh"]
+    networks:
+      - blueprint
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    container_name: blueprint-app-keycloak
+    # --import-realm reads /opt/keycloak/data/import/*.json on first start (fresh DB).
+    # Skipped on subsequent starts; use `down -v` to force re-import.
+    command: start-dev --import-realm
+    volumes:
+      - realm_import:/opt/keycloak/data/import:ro
+    environment:
+      # Database (uses the `keycloak` DB created by postgres-init.sql)
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: ${POSTGRES_USER}
+      KC_DB_PASSWORD: ${POSTGRES_PASSWORD}
+
+      # Bootstrap admin (only used to create the master-realm admin on first start)
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_BOOTSTRAP_ADMIN_USERNAME:?required}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD:?required}
+
+      # HTTP for local dev. HTTPS handled by ingress in K8s deployments.
+      KC_HOSTNAME: localhost
+      KC_HTTP_ENABLED: "true"
+      KC_HEALTH_ENABLED: "true"
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      realm-render:
+        condition: service_completed_successfully
+    networks:
+      - blueprint
+
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: blueprint-app-server
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/blueprint_app?schema=public
+      PORT: "4000"
+      CLIENT_ORIGIN: http://localhost:5173
+
+      # Issuer URL split: backend EXPECTS the browser-minted issuer in the JWT,
+      # but FETCHES JWKS from Keycloak via the docker-internal hostname.
+      KEYCLOAK_ISSUER: http://localhost:8080/realms/blueprint
+      KEYCLOAK_JWKS_URI: http://keycloak:8080/realms/blueprint/protocol/openid-connect/certs
+      KEYCLOAK_AUDIENCE: blueprint-app-backend
+    ports:
+      - "4000:4000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:4000/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 30s
+    networks:
+      - blueprint
+
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+      # Vite inlines VITE_* at build time. These mirror client/.env.example.
+      # All four are baked into the static bundle served by nginx.
+      args:
+        VITE_KEYCLOAK_URL: http://localhost:8080
+        VITE_KEYCLOAK_REALM: blueprint
+        VITE_KEYCLOAK_CLIENT_ID: blueprint-app-frontend
+        VITE_API_URL: http://localhost:4000
+    container_name: blueprint-app-client
+    ports:
+      - "5173:80"
+    depends_on:
+      - server
+    networks:
+      - blueprint
+
+volumes:
+  postgres_data:
+  realm_import:
+
+networks:
+  blueprint:
+    driver: bridge

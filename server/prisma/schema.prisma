@@ -1,0 +1,73 @@
+// Blueprint app domain models. Auth-related fields (passwordHash, emailVerifiedAt,
+// PendingRegistration) are NOT here — Keycloak owns the entire identity lifecycle.
+// Local User row mirrors the Keycloak `sub` claim and stores app-specific role + profile.
+
+generator client {
+  provider      = "prisma-client-js"
+  // `native` covers the dev host (macOS/Linux); the alpine target is for the
+  // container runtime so the right query engine binary is shipped.
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  STUDENT
+  ADVISOR
+  ADMIN
+}
+
+model User {
+  id            String         @id @default(cuid())
+  keycloakId    String         @unique
+  email         String         @unique
+  name          String
+  role          Role           @default(STUDENT)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  semesterPlans SemesterPlan[]
+
+  @@map("users")
+}
+
+model Module {
+  id             String          @id @default(uuid())
+  code           String          @unique
+  name           String
+  credits        Int
+  description    String?
+  school         String?
+  createdAt      DateTime        @default(now())
+  plannedModules PlannedModule[]
+
+  @@map("modules")
+}
+
+model SemesterPlan {
+  id             String          @id @default(uuid())
+  userId         String
+  year           Int
+  term           String
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plannedModules PlannedModule[]
+
+  @@unique([userId, year, term])
+  @@map("semester_plans")
+}
+
+model PlannedModule {
+  id             String       @id @default(uuid())
+  semesterPlanId String
+  moduleId       String
+  createdAt      DateTime     @default(now())
+  semesterPlan   SemesterPlan @relation(fields: [semesterPlanId], references: [id], onDelete: Cascade)
+  module         Module       @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  @@unique([semesterPlanId, moduleId])
+  @@map("planned_modules")
+}

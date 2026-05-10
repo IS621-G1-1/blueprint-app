@@ -1,0 +1,105 @@
+name: dev-to-main
+
+# Runs on PRs from `dev` (or release branches) into `main`.
+# Includes everything in feature-to-dev plus the heavier security/E2E gates.
+# Most security jobs are scaffolded but disabled (`if: false`) until tooling is wired.
+# See blueprint-knowledge-base/devsecops/ for plans on enabling each.
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ---- Reused fast-feedback gates ----
+
+  client-checks:
+    name: client (lint + typecheck + test)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test --if-present
+
+  server-checks:
+    name: server (lint + typecheck + test)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test --if-present
+
+  gitleaks:
+    name: gitleaks (secret scan)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ---- Heavy gates (placeholders) ----
+  # Each is structurally valid but skipped (`if: false`) until enabled.
+  # To enable: remove `if: false`, fill in the actual steps, follow the linked runbook.
+
+  sonarqube-scan:
+    name: SAST — SonarQube quality gate
+    # See blueprint-knowledge-base/devsecops/sast.md
+    runs-on: ubuntu-latest
+    if: false
+    steps:
+      - run: echo "TODO — see devsecops/sast.md"
+
+  trivy-fs:
+    name: SCA — Trivy filesystem scan
+    # See blueprint-knowledge-base/devsecops/dependency-scanning.md
+    runs-on: ubuntu-latest
+    if: false
+    steps:
+      - run: echo "TODO — see devsecops/dependency-scanning.md"
+
+  trivy-image:
+    name: Container — Trivy image scan + Copa patch
+    # See blueprint-knowledge-base/devsecops/container-security.md
+    runs-on: ubuntu-latest
+    if: false
+    steps:
+      - run: echo "TODO — see devsecops/container-security.md"
+
+  cypress-e2e:
+    name: E2E — Cypress
+    # See blueprint-knowledge-base/devsecops/dast.md
+    runs-on: ubuntu-latest
+    if: false
+    steps:
+      - run: echo "TODO — see devsecops/dast.md"
+
+  zap-baseline:
+    name: DAST — OWASP ZAP baseline
+    # See blueprint-knowledge-base/devsecops/dast.md
+    runs-on: ubuntu-latest
+    if: false
+    steps:
+      - run: echo "TODO — see devsecops/dast.md"
