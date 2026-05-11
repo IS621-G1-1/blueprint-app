@@ -16,8 +16,6 @@ app.use("/health", healthRoutes);
 app.use("/auth", authRoutes);
 app.use("/me", meRoutes);
 
-// Final error handler. JWT errors from express-oauth2-jwt-bearer surface as 401 with
-// a sensible message; other errors get a generic 500 to avoid leaking internals.
 app.use((err: Error & { status?: number }, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   if (err.status && err.status < 500) return res.status(err.status).json({ error: err.message });
   console.error(err);

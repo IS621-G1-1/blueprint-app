@@ -19,8 +19,8 @@ export function RegisterPage() {
     setError(null);
     setSubmitting(true);
     try {
-      await auth.register(name, email, password);
-      navigate("/", { replace: true });
+      await auth.registerRequest(name, email, password);
+      navigate(`/verify-email?email=${encodeURIComponent(email)}`, { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -62,7 +62,7 @@ export function RegisterPage() {
             autoComplete="new-password"
             minLength={8}
           />
-          <p className="text-xs text-slate-500">At least 8 characters, including a digit.</p>
+          <p className="text-xs text-slate-500">At least 8 characters.</p>
 
           {error && (
             <p className="rounded border border-red-900/40 bg-red-950/30 px-3 py-2 text-sm text-red-400">
@@ -75,7 +75,7 @@ export function RegisterPage() {
             disabled={submitting}
             className="w-full rounded bg-indigo-500 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-400 disabled:opacity-60"
           >
-            {submitting ? "Creating account…" : "Create account"}
+            {submitting ? "Sending code…" : "Send verification code"}
           </button>
         </form>
 

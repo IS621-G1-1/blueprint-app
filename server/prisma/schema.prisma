@@ -1,11 +1,7 @@
-// Blueprint app domain models. Auth-related fields (passwordHash, emailVerifiedAt,
-// PendingRegistration) are NOT here — Keycloak owns the entire identity lifecycle.
-// Local User row mirrors the Keycloak `sub` claim and stores app-specific role + profile.
+// Blueprint app — own auth (bcrypt + JWT + email OTP). No external IdP.
 
 generator client {
   provider      = "prisma-client-js"
-  // `native` covers the dev host (macOS/Linux); the alpine target is for the
-  // container runtime so the right query engine binary is shipped.
   binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
 }
 
@@ -21,16 +17,34 @@ enum Role {
 }
 
 model User {
-  id            String         @id @default(cuid())
-  keycloakId    String         @unique
-  email         String         @unique
-  name          String
-  role          Role           @default(STUDENT)
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  semesterPlans SemesterPlan[]
+  id              String         @id @default(cuid())
+  email           String         @unique
+  name            String
+  passwordHash    String
+  role            Role           @default(STUDENT)
+  emailVerifiedAt DateTime?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  semesterPlans   SemesterPlan[]
 
   @@map("users")
+}
+
+// In-flight registration. Holds the submitted details + a hashed 6-digit OTP.
+// The user row is NOT created until verify succeeds — keeps unverified accounts
+// out of the production users table.
+model PendingRegistration {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  name         String
+  passwordHash String
+  codeHash     String
+  expiresAt    DateTime
+  attempts     Int       @default(0)
+  consumedAt   DateTime?
+  createdAt    DateTime  @default(now())
+
+  @@map("pending_registrations")
 }
 
 model Module {
