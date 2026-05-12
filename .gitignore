@@ -16,6 +16,10 @@ server/node_modules/
 server/dist/
 server/.env
 
+# Playwright
+client/test-results/
+client/playwright-report/
+
 # Editor
 .vscode/
 .DS_Store
