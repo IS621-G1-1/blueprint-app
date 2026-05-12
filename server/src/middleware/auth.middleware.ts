@@ -20,10 +20,10 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
 
     const user = await prisma.user.findUnique({
       where: { id: payload.userId },
-      select: { id: true, role: true },
+      select: { id: true, role: true, tokenVersion: true },
     });
 
-    if (!user) {
+    if (!user || user.tokenVersion !== payload.tokenVersion) {
       return res.status(401).json({ error: "Missing or invalid authorization token" });
     }
 
