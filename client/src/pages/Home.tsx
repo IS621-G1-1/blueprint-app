@@ -13,7 +13,7 @@ export function Home() {
           Home
         </p>
         <h1 className="mt-3 max-w-3xl text-3xl font-semibold leading-tight tracking-normal text-white">
-          Hello {name}, here is your projected path to graduation
+          Welcome back, {name}. Here is your projected path to graduation.
         </h1>
       </section>
 
