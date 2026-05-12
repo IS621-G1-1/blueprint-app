@@ -1,14 +1,9 @@
 import { Navigate, Outlet } from "react-router-dom";
-import { useAuth } from "@/auth/AuthContext";
 
 export function ProtectedRoute() {
-  const auth = useAuth();
+  const token = localStorage.getItem("blueprint_token");
 
-  if (auth.isLoading) {
-    return <div className="flex h-full items-center justify-center text-slate-300">Loading…</div>;
-  }
-
-  if (!auth.isAuthenticated) {
+  if (!token) {
     return <Navigate to="/login" replace />;
   }
 

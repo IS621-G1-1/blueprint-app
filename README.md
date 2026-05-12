@@ -1,49 +1,40 @@
 # blueprint-app
 
-Application code for **Blueprint** — IS621 DevSecOps coursework (Group 1, SMU). A web app for SMU students to plan modules, build timetables, and discover modules through peer activity.
+Application code for **BlueprInT** — IS621 DevSecOps coursework (Group 1, SMU). A web app for SMU students to plan modules, build semester plans, and track graduation requirements.
 
-This repo is the **frontend + backend**. Infrastructure (Helm charts, K8s manifests, production compose stacks) lives in [`blueprint-infra`](../blueprint-infra). Architecture and DevSecOps strategy live in [`blueprint-knowledge-base`](../blueprint-knowledge-base).
+This repo is the **frontend + backend**. Infrastructure (Helm charts, K8s manifests) lives in [`blueprint-infra`](../blueprint-infra). Architecture and DevSecOps strategy live in [`blueprint-knowledge-base`](../blueprint-knowledge-base).
 
-## Quick start (engineers — test login in ~2 minutes)
+## Quick start (~2 minutes to running app)
 
 ```bash
 git clone git@github.com:IS621-G1-1/blueprint-app.git
 cd blueprint-app
 cp .env.example .env
-# Edit .env: set POSTGRES_PASSWORD and JWT_SECRET.
-# Leave EMAIL_PROVIDER=mailpit (default — no SendGrid account needed).
-
+# Edit .env: set POSTGRES_PASSWORD and JWT_SECRET
 docker compose up -d
-docker compose logs -f server | grep "Server running"
 ```
-
-When you see `Server running on http://localhost:4000`, open the app.
 
 | Step | URL | What you do |
 |------|-----|-------------|
-| 1 | http://localhost:5173 | Blueprint's login page |
-| 2 | click **Create an account** | Fill in name / email / password |
+| 1 | http://localhost:5173 | BlueprInT login page |
+| 2 | click **Create an account** | Fill in name / SMU email / password |
 | 3 | submit | "Check your email" — OTP sent |
 | 4 | http://localhost:8025 | Mailpit; copy the 6-digit code |
-| 5 | paste code, submit | You're auto-logged-in. HomePage shows `GET /me` |
-| 6 | go to **Account** | Profile + change-password form |
-| 7 | enter current + new, submit | Password updated |
-| 8 | sign out, sign in with new password | Lands on home |
-
-End users never see anything but Blueprint. The backend owns the full auth flow: bcrypt password hashing, JWT signing/verification, 6-digit OTP emails via nodemailer.
+| 5 | paste code, submit | Logged in. Home page shows graduation requirements + plan overview |
+| 6 | click **Planner** | Search modules and build semester plans |
+| 7 | click **Profile** | View your name, email, role |
+| 8 | sign out, sign in again | Lands on home |
 
 ## Tech stack
 
 | Layer | Choice |
 |-------|--------|
-| Frontend | Vite + React + TypeScript + Tailwind |
+| Frontend | Vite + React + TypeScript + Tailwind + shadcn/ui |
 | Backend | Express + TypeScript + Prisma + PostgreSQL |
-| Auth | Backend-owned: bcrypt + JWT (HS256, 7d) + 6-digit OTP via email |
+| Auth | bcrypt password hashing + JWT (HS256, 7d) + 6-digit OTP via email |
 | Token storage | localStorage |
 | Email (dev) | Mailpit |
-| Email (live) | SendGrid (switchable via `EMAIL_PROVIDER`) |
-
-Intentionally **not** using: Keycloak, Turborepo, pnpm workspaces, tRPC. Auth is self-contained; identity-provider integration was deemed out of scope for this coursework.
+| Email (live) | Gmail via nodemailer (switchable via `EMAIL_PROVIDER`) |
 
 ## Ports
 
@@ -51,84 +42,102 @@ Intentionally **not** using: Keycloak, Turborepo, pnpm workspaces, tRPC. Auth is
 |------|---------|
 | 5173 | Frontend (nginx) |
 | 4000 | Backend (Express) |
-| 8025 | Mailpit web UI (see OTP emails here) |
-| 1025 | Mailpit SMTP (backend connects to this) |
+| 8025 | Mailpit web UI (read OTP emails here) |
+| 1025 | Mailpit SMTP |
 | 5432 | Postgres |
-
-## Switching email to SendGrid
-
-```bash
-# Edit .env
-EMAIL_PROVIDER=sendgrid
-SENDGRID_API_KEY=SG.<your key>
-SENDGRID_FROM_EMAIL=verified@example.com   # must be a SendGrid-verified sender
-
-docker compose down
-docker compose up -d
-```
-
-To get a SendGrid API key + verify a sender, see [`blueprint-knowledge-base/runbooks/keycloak-sendgrid-setup.md`](../blueprint-knowledge-base/runbooks/keycloak-sendgrid-setup.md) Part 1 (the SendGrid setup steps still apply; ignore the Keycloak realm config — we configure SMTP in the backend's `.env` now).
-
-## Active development (HMR)
-
-The compose-built frontend is a production artifact (nginx). For HMR:
-
-```bash
-# Keep compose running for Postgres + Mailpit + backend
-docker compose up -d postgres mailpit server
-
-# Run frontend locally
-cd client
-cp .env.example .env
-npm install
-npm run dev
-```
 
 ## Repo layout
 
 ```
 blueprint-app/
-├── README.md, CONTRIBUTING.md, .env.example
+├── .env.example                 # copy to .env and fill in secrets
 ├── docker-compose.yaml          # postgres + mailpit + server + client
 ├── client/                      # Vite + React frontend
+│   ├── Dockerfile
+│   ├── nginx.conf
+│   └── src/
+│       ├── pages/               # Home, Login, Register, VerifyEmail, Planner, Timetable, Profile
+│       ├── components/          # layout, dashboard, auth, ui (shadcn)
+│       ├── api/                 # auth.ts, modules.ts, semesterPlans.ts
+│       ├── config/              # graduationRequirements.ts
+│       └── types/               # planner.ts
 └── server/                      # Express + Prisma backend
+    ├── Dockerfile
+    ├── prisma/
+    │   ├── schema.prisma
+    │   ├── seed.ts              # run manually: npx tsx prisma/seed.ts
+    │   └── migrations/          # includes auto-seed migration for module catalogue
+    └── src/
+        ├── routes/              # auth, modules, semester-plans
+        ├── middleware/          # requireAuth (JWT verification)
+        └── lib/                 # jwt, email, prisma, verificationCode
+```
+
+## Switching email to Gmail
+
+```bash
+# Edit .env
+EMAIL_PROVIDER=gmail
+GMAIL_USER=your@gmail.com
+GMAIL_APP_PASSWORD=xxxx xxxx xxxx xxxx   # Google App Password
+
+docker compose up -d --build server
+```
+
+> Gmail requires a [Google App Password](https://myaccount.google.com/apppasswords) — not your account password. 2FA must be enabled on the Google account.
+
+## Active development (HMR)
+
+The compose-built frontend is a production nginx artifact. For HMR:
+
+```bash
+# Keep backend + postgres + mailpit running
+docker compose up -d postgres mailpit server
+
+# Run frontend locally
+cd client
+cp .env.example .env          # sets VITE_API_BASE_URL=http://localhost:4000
+npm install
+npm run dev
 ```
 
 ## Branching & PR gates
 
-See [`CONTRIBUTING.md`](CONTRIBUTING.md). TL;DR: `feature/* → dev → main`. Light gates on `dev`, full security pipeline on `main`.
+`feature/* → dev → main`. Light gates on `dev` (lint, typecheck, test, gitleaks). Full security pipeline on `main` (+ SAST, Trivy, Cypress, ZAP placeholders).
+
+See [`CONTRIBUTING.md`](../blueprint-knowledge-base) and [`.github/workflows/`](.github/workflows/).
 
 ## Security considerations
 
-- **Tokens in localStorage** — XSS-readable. Acceptable for coursework; consider httpOnly cookies for production.
-- **No rate limiting** on `/auth/login` or `/auth/register/request` — easy to add (e.g., `express-rate-limit`).
-- **JWT_SECRET rotation invalidates all sessions** — that's the only revocation lever today.
-- **No password reset flow yet** — deferred.
-- **No 2FA at login** — only at registration (email verification).
-
-## Deferred (planned, not yet done)
-
-| Feature | See |
-|---------|-----|
-| Cypress E2E | [devsecops/dast.md](../blueprint-knowledge-base/devsecops/dast.md) |
-| SonarQube SAST | [devsecops/sast.md](../blueprint-knowledge-base/devsecops/sast.md) |
-| Trivy fs + image scans | [devsecops/container-security.md](../blueprint-knowledge-base/devsecops/container-security.md) |
-| OWASP ZAP DAST | [devsecops/dast.md](../blueprint-knowledge-base/devsecops/dast.md) |
-| Helm charts / K8s manifests | [blueprint-infra/](../blueprint-infra) |
-| `/modules`, `/semester-plans` REST endpoints | port from prototype |
-| Password reset flow | future PR |
-| Rate limiting | future PR |
+- **Tokens in localStorage** — XSS-readable. Acceptable for coursework; httpOnly cookies for production.
+- **No rate limiting** on `/auth/login` or `/auth/register/request` — add `express-rate-limit` when needed.
+- **JWT_SECRET rotation invalidates all sessions** — only revocation lever today.
+- **No password reset flow** — deferred.
+- **SMU email enforced at registration** — `@smu.edu.sg` check in `RegisterPage` and `auth.routes.ts`.
 
 ## Local debugging
 
 ```bash
-docker compose ps                       # all services running
+docker compose ps
 docker compose logs server --tail 30
 docker compose logs mailpit --tail 30
 
 # psql into the app database
-docker compose exec postgres psql -U $POSTGRES_USER -d blueprint_app
+docker compose exec postgres psql -U blueprint -d blueprint_db
 
-# Read all OTP emails from Mailpit (incl. extracting codes)
-curl -s http://localhost:8025/api/v1/messages | jq
+# Read OTP emails via Mailpit API
+curl -s http://localhost:8025/api/v1/messages | jq '.[0].Content.Body'
 ```
+
+## Deferred (planned, not yet done)
+
+| Feature | Notes |
+|---------|-------|
+| Cypress E2E | Placeholder job in `dev-to-main.yml` |
+| SonarQube SAST | Placeholder job in `dev-to-main.yml` |
+| Trivy image scans | Placeholder job in `dev-to-main.yml` |
+| OWASP ZAP DAST | Placeholder job in `dev-to-main.yml` |
+| Helm charts / K8s manifests | [`blueprint-infra/`](../blueprint-infra) |
+| Password reset flow | Future PR |
+| Rate limiting | Future PR |
+| Timetable view | Stub page — calendar integration deferred |

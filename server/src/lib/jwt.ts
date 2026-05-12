@@ -1,29 +1,20 @@
-import jwt, { type Secret, type SignOptions } from "jsonwebtoken";
+import jwt from "jsonwebtoken";
 
-export type TokenPayload = {
+interface TokenPayload {
   userId: string;
   email: string;
-  role: string;
-};
-
-function readSecret(): Secret {
-  const s = process.env.JWT_SECRET;
-  if (!s) throw new Error("JWT_SECRET must be set");
-  return s;
+  role?: string;
 }
 
-const SECRET: Secret = readSecret();
-const SIGN_OPTIONS: SignOptions = { expiresIn: "7d" };
+const SECRET = process.env.JWT_SECRET || "your_jwt_secret_key";
 
 export function generateToken(payload: TokenPayload): string {
-  return jwt.sign(payload, SECRET, SIGN_OPTIONS);
+  return jwt.sign(payload, SECRET, { expiresIn: "7d" });
 }
 
-export function verifyJwt(token: string): TokenPayload | null {
+export function verifyToken(token: string): TokenPayload | null {
   try {
-    const decoded = jwt.verify(token, SECRET);
-    if (typeof decoded === "string") return null;
-    return decoded as unknown as TokenPayload;
+    return jwt.verify(token, SECRET) as TokenPayload;
   } catch {
     return null;
   }

@@ -1,36 +1,21 @@
-# Dependencies
+# Node
 node_modules/
-*/node_modules/
 
-# Build output
-dist/
-build/
-*/dist/
-*/build/
-.next/
-
-# Environment
+# Root files
 .env
-.env.*
-!.env.example
-
-# Local SMTP test inbox / DB volumes are inside Docker; these guard accidental host files
-*.sqlite
-*.db
-
-# IDE
-.vscode/
-.idea/
-*.swp
-.DS_Store
-
-# Logs
 *.log
-npm-debug.log*
 
-# Coverage
-coverage/
-*.lcov
+# Client
+client/node_modules/
+client/dist/
+client/.env
+client/.vite/
 
-# Prisma generated (generated on each `prisma generate`)
-*/prisma/migrations/migration_lock.toml.bak
+# Server
+server/node_modules/
+server/dist/
+server/.env
+
+# Editor
+.vscode/
+.DS_Store

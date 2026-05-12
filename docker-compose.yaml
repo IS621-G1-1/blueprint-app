@@ -1,59 +1,28 @@
-# Full local dev stack for blueprint-app.
-#
-# Services: postgres, mailpit, server, client.
-# Auth is owned by the backend directly (bcrypt + jsonwebtoken + nodemailer);
-# Keycloak was dropped from the demo for scope reasons.
-#
-# Engineer flow: `cp .env.example .env`, fill in passwords, then `docker compose up -d`.
-
 services:
   postgres:
     image: postgres:17-alpine
-    container_name: blueprint-app-postgres
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER required (see .env.example)}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required}
-      POSTGRES_DB: blueprint_app
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
+      POSTGRES_USER: ${POSTGRES_USER:-blueprint}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-blueprint_db}
     ports:
       - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER}"]
-      interval: 5s
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-blueprint}"]
+      interval: 10s
       timeout: 5s
-      retries: 10
-    networks:
-      - blueprint
+      retries: 5
 
   mailpit:
     image: axllent/mailpit:latest
-    container_name: blueprint-app-mailpit
-    # Backend's nodemailer sends OTP emails here when EMAIL_PROVIDER=mailpit.
     ports:
-      - "8025:8025"  # web UI — open this to see emails
-      - "1025:1025"  # SMTP — backend connects to this
-    networks:
-      - blueprint
+      - "8025:8025"   # Web UI — open http://localhost:8025 to read OTP emails
+      - "1025:1025"   # SMTP
 
   server:
-    build:
-      context: ./server
-      dockerfile: Dockerfile
-    container_name: blueprint-app-server
-    environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/blueprint_app?schema=public
-      PORT: "4000"
-      CLIENT_ORIGIN: http://localhost:5173
-
-      # Auth
-      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET required (see .env.example)}
-
-      # Email — switchable
-      EMAIL_PROVIDER: ${EMAIL_PROVIDER:-mailpit}
-      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-noreply@blueprint.local}
-      SENDGRID_API_KEY: ${SENDGRID_API_KEY:-}
-      SENDGRID_FROM_EMAIL: ${SENDGRID_FROM_EMAIL:-}
+    build: ./server
     ports:
       - "4000:4000"
     depends_on:
@@ -61,33 +30,28 @@ services:
         condition: service_healthy
       mailpit:
         condition: service_started
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:4000/health"]
-      interval: 10s
-      timeout: 3s
-      retries: 5
-      start_period: 30s
-    networks:
-      - blueprint
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-blueprint}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-blueprint_db}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER:-mailpit}
+      SMTP_HOST: mailpit
+      SMTP_PORT: "1025"
+      GMAIL_USER: ${GMAIL_USER:-}
+      GMAIL_APP_PASSWORD: ${GMAIL_APP_PASSWORD:-}
+      EMAIL_FROM: ${EMAIL_FROM:-BlueprintT <noreply@blueprint.local>}
+      NODE_ENV: production
+      CLIENT_ORIGIN: http://localhost:5173
+      PORT: "4000"
 
   client:
     build:
       context: ./client
-      dockerfile: Dockerfile
-      # Vite inlines VITE_* at build time. Only need the API URL.
       args:
-        VITE_API_URL: http://localhost:4000
-    container_name: blueprint-app-client
+        VITE_API_BASE_URL: http://localhost:4000
     ports:
       - "5173:80"
     depends_on:
       - server
-    networks:
-      - blueprint
 
 volumes:
   postgres_data:
-
-networks:
-  blueprint:
-    driver: bridge

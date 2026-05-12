@@ -1,152 +1,237 @@
-import { Router, type Request, type Response } from "express";
+import { Router } from "express";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import prisma from "../lib/prisma.js";
 import { generateToken } from "../lib/jwt.js";
-import { requireAuth } from "../middleware/requireAuth.js";
-import { sendOtpEmail } from "../lib/email.js";
-import { MAX_ATTEMPTS, OTP_TTL_MS, generateCode, hashCode, verifyCode } from "../lib/otp.js";
+import { generateVerificationCode, hashCode, verifyCode } from "../lib/verificationCode.js";
+import { sendVerificationEmail } from "../lib/email.js";
+import { isSmuEmail } from "../utils/isSmuEmail.js";
 
 const router = Router();
 
+// Validation schemas
 const registerRequestSchema = z.object({
   name: z.string().min(1, "Name is required"),
   email: z.string().email("Invalid email"),
   password: z.string().min(8, "Password must be at least 8 characters"),
 });
 
-const registerVerifySchema = z.object({
-  email: z.string().email(),
+const verifyEmailSchema = z.object({
+  email: z.string().email("Invalid email"),
   code: z.string().length(6, "Code must be 6 digits"),
 });
 
 const loginSchema = z.object({
-  email: z.string().email(),
-  password: z.string().min(1),
+  email: z.string().email("Invalid email"),
+  password: z.string(),
 });
 
-const changePasswordSchema = z.object({
-  current_password: z.string().min(1),
-  new_password: z.string().min(8, "New password must be at least 8 characters"),
-});
+// POST /auth/register/request
+router.post("/register/request", async (req, res) => {
+  try {
+    // Validate input
+    const data = registerRequestSchema.parse(req.body);
 
-function tokenResponse(user: { id: string; email: string; name: string; role: string }) {
-  return {
-    access_token: generateToken({ userId: user.id, email: user.email, role: user.role }),
-    token_type: "Bearer",
-    expires_in: 7 * 24 * 60 * 60,
-    user: { id: user.id, email: user.email, name: user.name, role: user.role },
-  };
-}
+    // Check if email is SMU email
+    if (!isSmuEmail(data.email)) {
+      return res.status(400).json({
+        error: "Only SMU emails (@smu.edu.sg) are allowed",
+      });
+    }
 
-// POST /auth/register/request — create pending registration, send OTP email
-router.post("/register/request", async (req: Request, res: Response) => {
-  const parsed = registerRequestSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.errors[0].message });
-
-  const { name, email, password } = parsed.data;
-
-  const existing = await prisma.user.findUnique({ where: { email } });
-  if (existing) return res.status(409).json({ error: "Email is already registered" });
-
-  // If there's a pending row that hasn't been consumed, overwrite it (lets the
-  // user re-trigger the flow with a fresh code without manually clearing state).
-  const passwordHash = await bcrypt.hash(password, 10);
-  const code = generateCode();
-  const codeHash = await hashCode(code);
-  const expiresAt = new Date(Date.now() + OTP_TTL_MS);
-
-  await prisma.pendingRegistration.upsert({
-    where: { email },
-    create: { email, name, passwordHash, codeHash, expiresAt, attempts: 0 },
-    update: { name, passwordHash, codeHash, expiresAt, attempts: 0, consumedAt: null },
-  });
-
-  await sendOtpEmail(email, name, code);
-
-  return res.json({ message: "Verification code sent", email });
-});
-
-// POST /auth/register/verify — validate OTP, create user row, return JWT
-router.post("/register/verify", async (req: Request, res: Response) => {
-  const parsed = registerVerifySchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.errors[0].message });
-
-  const { email, code } = parsed.data;
-  const pending = await prisma.pendingRegistration.findUnique({ where: { email } });
-
-  if (!pending) return res.status(404).json({ error: "No registration in progress for this email" });
-  if (pending.consumedAt) return res.status(400).json({ error: "This registration was already verified" });
-  if (new Date() > pending.expiresAt) return res.status(400).json({ error: "Verification code expired" });
-  if (pending.attempts >= MAX_ATTEMPTS) {
-    return res.status(400).json({ error: "Too many failed attempts. Please request a new code." });
-  }
-
-  const ok = await verifyCode(code, pending.codeHash);
-  if (!ok) {
-    await prisma.pendingRegistration.update({
-      where: { email },
-      data: { attempts: { increment: 1 } },
+    // Check if user already exists
+    const existingUser = await prisma.user.findUnique({
+      where: { email: data.email },
     });
-    return res.status(400).json({ error: "Invalid verification code" });
+
+    if (existingUser) {
+      return res.status(409).json({ error: "User already exists" });
+    }
+
+    // Check if pending registration exists
+    const existingPending = await prisma.pendingRegistration.findUnique({
+      where: { email: data.email },
+    });
+
+    if (existingPending && !existingPending.consumedAt) {
+      return res.status(400).json({
+        error: "Registration already in progress. Check your email for verification code.",
+      });
+    }
+
+    // Hash password
+    const passwordHash = await bcrypt.hash(data.password, 10);
+
+    // Generate verification code
+    const code = generateVerificationCode();
+    const codeHash = await hashCode(code);
+
+    // Create pending registration
+    await prisma.pendingRegistration.create({
+      data: {
+        email: data.email,
+        name: data.name,
+        passwordHash,
+        codeHash,
+        expiresAt: new Date(Date.now() + 15 * 60 * 1000), // 15 minutes
+        attempts: 0,
+      },
+    });
+
+    // Send verification email (or log in development)
+    await sendVerificationEmail(data.email, code, data.name);
+
+    return res.json({
+      message: "Verification code sent to your email",
+      email: data.email,
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ error: error.errors[0].message });
+    }
+
+    console.error("Registration request error:", error);
+    return res.status(500).json({ error: "Internal server error" });
   }
+});
 
-  const user = await prisma.user.create({
-    data: {
-      email,
-      name: pending.name,
-      passwordHash: pending.passwordHash,
-      emailVerifiedAt: new Date(),
-    },
-    select: { id: true, email: true, name: true, role: true },
-  });
+// POST /auth/register/verify
+router.post("/register/verify", async (req, res) => {
+  try {
+    // Validate input
+    const data = verifyEmailSchema.parse(req.body);
 
-  await prisma.pendingRegistration.update({
-    where: { email },
-    data: { consumedAt: new Date() },
-  });
+    // Find pending registration
+    const pending = await prisma.pendingRegistration.findUnique({
+      where: { email: data.email },
+    });
 
-  return res.status(201).json(tokenResponse(user));
+    if (!pending) {
+      return res.status(404).json({ error: "Registration request not found" });
+    }
+
+    // Check if already consumed
+    if (pending.consumedAt) {
+      return res.status(400).json({ error: "This registration has already been verified" });
+    }
+
+    // Check if expired
+    if (new Date() > pending.expiresAt) {
+      return res.status(400).json({ error: "Verification code expired" });
+    }
+
+    // Check attempts
+    if (pending.attempts >= 5) {
+      return res.status(400).json({ error: "Too many failed attempts. Please register again." });
+    }
+
+    // Verify code
+    const isCodeValid = await verifyCode(data.code, pending.codeHash);
+
+    if (!isCodeValid) {
+      // Increment attempts
+      await prisma.pendingRegistration.update({
+        where: { email: data.email },
+        data: { attempts: pending.attempts + 1 },
+      });
+
+      return res.status(400).json({ error: "Invalid verification code" });
+    }
+
+    // Create user
+    const user = await prisma.user.create({
+      data: {
+        email: data.email,
+        name: pending.name,
+        passwordHash: pending.passwordHash,
+        role: "STUDENT",
+        emailVerifiedAt: new Date(),
+      },
+    });
+
+    // Mark pending registration as consumed
+    await prisma.pendingRegistration.update({
+      where: { email: data.email },
+      data: { consumedAt: new Date() },
+    });
+
+    // Generate JWT token
+    const token = generateToken({
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+    });
+
+    return res.json({
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+      },
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ error: error.errors[0].message });
+    }
+
+    console.error("Email verification error:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
 });
 
 // POST /auth/login
-router.post("/login", async (req: Request, res: Response) => {
-  const parsed = loginSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.errors[0].message });
+router.post("/login", async (req, res) => {
+  try {
+    // Validate input
+    const data = loginSchema.parse(req.body);
 
-  const { email, password } = parsed.data;
-  const user = await prisma.user.findUnique({ where: { email } });
+    // Find user
+    const user = await prisma.user.findUnique({
+      where: { email: data.email },
+    });
 
-  if (!user) return res.status(401).json({ error: "Invalid email or password" });
-  if (!user.emailVerifiedAt) return res.status(403).json({ error: "Email not verified" });
+    if (!user) {
+      return res.status(401).json({ error: "Invalid email or password" });
+    }
 
-  const ok = await bcrypt.compare(password, user.passwordHash);
-  if (!ok) return res.status(401).json({ error: "Invalid email or password" });
+    // Check if email is verified
+    if (!user.emailVerifiedAt) {
+      return res.status(403).json({ error: "Email not verified. Please complete registration." });
+    }
 
-  return res.json(
-    tokenResponse({ id: user.id, email: user.email, name: user.name, role: user.role })
-  );
+    // Verify password
+    const isPasswordValid = await bcrypt.compare(data.password, user.passwordHash);
+
+    if (!isPasswordValid) {
+      return res.status(401).json({ error: "Invalid email or password" });
+    }
+
+    // Generate JWT token
+    const token = generateToken({
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+    });
+
+    return res.json({
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+      },
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ error: error.errors[0].message });
+    }
+
+    console.error("Login error:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
 });
-
-// POST /auth/change-password — authed; verifies current pw before updating
-router.post("/change-password", requireAuth, async (req: Request, res: Response) => {
-  const parsed = changePasswordSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.errors[0].message });
-
-  const user = await prisma.user.findUnique({ where: { id: req.auth!.userId } });
-  if (!user) return res.status(404).json({ error: "User not found" });
-
-  const ok = await bcrypt.compare(parsed.data.current_password, user.passwordHash);
-  if (!ok) return res.status(401).json({ error: "Current password is incorrect" });
-
-  const newHash = await bcrypt.hash(parsed.data.new_password, 10);
-  await prisma.user.update({ where: { id: user.id }, data: { passwordHash: newHash } });
-
-  return res.status(204).end();
-});
-
-// POST /auth/logout — stateless JWT, so this is just a client signal. Tokens
-// remain valid until expiry (or rotate JWT_SECRET to invalidate all sessions).
-router.post("/logout", (_req, res) => res.status(204).end());
 
 export default router;

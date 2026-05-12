@@ -1,27 +1,38 @@
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
-import healthRoutes from "./routes/health.routes.js";
-import meRoutes from "./routes/me.routes.js";
 import authRoutes from "./routes/auth.routes.js";
+import moduleRoutes from "./routes/module.routes.js";
+import semesterPlanRoutes from "./routes/semesterPlan.routes.js";
 
 const app = express();
-const PORT = Number(process.env.PORT ?? 4000);
-const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN ?? "http://localhost:5173";
+const PORT = process.env.PORT || 4000;
+const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || "http://localhost:5173";
 
+// Middleware
 app.use(express.json());
-app.use(cors({ origin: CLIENT_ORIGIN, credentials: true }));
+app.use(
+  cors({
+    origin: CLIENT_ORIGIN,
+    credentials: true,
+  })
+);
 
-app.use("/health", healthRoutes);
+// Routes
+app.get("/health", (_req, res) => {
+  res.json({ status: "OK", timestamp: new Date().toISOString() });
+});
+
 app.use("/auth", authRoutes);
-app.use("/me", meRoutes);
+app.use("/modules", moduleRoutes);
+app.use("/semester-plans", semesterPlanRoutes);
 
-app.use((err: Error & { status?: number }, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  if (err.status && err.status < 500) return res.status(err.status).json({ error: err.message });
+// Error handling middleware
+app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error(err);
   res.status(500).json({ error: "Internal server error" });
 });
 
 app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+  console.log(`🚀 Server running on http://localhost:${PORT}`);
 });

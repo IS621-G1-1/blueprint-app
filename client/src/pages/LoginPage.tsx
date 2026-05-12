@@ -1,81 +1,116 @@
 import { FormEvent, useState } from "react";
-import { Link, Navigate, useNavigate } from "react-router-dom";
-import { useAuth } from "@/auth/AuthContext";
-import { FormField } from "@/components/ui/FormField";
+import { useNavigate } from "react-router-dom";
+import { login, persistAuthSession } from "@/api/auth";
+import { AuthShell } from "@/components/auth/AuthShell";
+import { FormError } from "@/components/auth/FormError";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 export function LoginPage() {
-  const auth = useAuth();
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
-  if (auth.isAuthenticated) return <Navigate to="/" replace />;
-
-  const onSubmit = async (e: FormEvent) => {
-    e.preventDefault();
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
     setError(null);
-    setSubmitting(true);
+    setIsLoading(true);
+
     try {
-      await auth.login(email, password);
-      navigate("/", { replace: true });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      const response = await login({ email, password });
+      persistAuthSession(response);
+      navigate("/dashboard");
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Unable to log in. Please try again.",
+      );
     } finally {
-      setSubmitting(false);
+      setIsLoading(false);
     }
-  };
+  }
+
+  function handleTemporaryLogin() {
+    persistAuthSession({
+      message: "Temporary login successful.",
+      token: "temporary-dev-token",
+      user: {
+        id: "temporary-student",
+        email: "student@smu.edu.sg",
+        name: "SMU Student",
+        role: "STUDENT",
+      },
+    });
+    navigate("/dashboard");
+  }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-slate-950 to-slate-900 text-slate-100">
-      <div className="w-full max-w-md rounded-lg border border-slate-800 bg-slate-900/60 p-8">
-        <h1 className="text-2xl font-semibold">Sign in to Blueprint</h1>
-        <p className="mt-1 text-sm text-slate-400">Welcome back.</p>
+    <AuthShell
+      footerText="New to BlueprInT?"
+      footerLinkText="Create an account"
+      footerLinkTo="/register"
+    >
+      <Card>
+        <CardHeader>
+          <CardTitle>Student Login</CardTitle>
+          <CardDescription>
+            Access your academic planning workspace.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form className="space-y-5" onSubmit={handleSubmit}>
+            <FormError message={error} />
 
-        <form onSubmit={onSubmit} className="mt-6 space-y-4">
-          <FormField
-            label="Email"
-            type="email"
-            name="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            autoComplete="email"
-          />
-          <FormField
-            label="Password"
-            type="password"
-            name="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            autoComplete="current-password"
-            minLength={8}
-          />
+            <div className="space-y-2">
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                type="email"
+                autoComplete="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                required
+              />
+            </div>
 
-          {error && (
-            <p className="rounded border border-red-900/40 bg-red-950/30 px-3 py-2 text-sm text-red-400">
-              {error}
-            </p>
-          )}
+            <div className="space-y-2">
+              <Label htmlFor="password">Password</Label>
+              <Input
+                id="password"
+                type="password"
+                autoComplete="current-password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                required
+              />
+            </div>
 
-          <button
-            type="submit"
-            disabled={submitting}
-            className="w-full rounded bg-indigo-500 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-400 disabled:opacity-60"
-          >
-            {submitting ? "Signing in…" : "Sign in"}
-          </button>
-        </form>
+            <Button className="w-full" type="submit" disabled={isLoading}>
+              {isLoading ? "Signing in..." : "Sign in"}
+            </Button>
 
-        <p className="mt-6 text-center text-sm text-slate-400">
-          New to Blueprint?{" "}
-          <Link to="/register" className="text-indigo-400 hover:text-indigo-300">
-            Create an account
-          </Link>
-        </p>
-      </div>
-    </div>
+            <Button
+              className="w-full border-accent/50 text-accent hover:bg-accent/10 hover:text-accent"
+              type="button"
+              variant="outline"
+              onClick={handleTemporaryLogin}
+            >
+              Temporary login
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+    </AuthShell>
   );
 }

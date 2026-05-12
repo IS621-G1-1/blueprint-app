@@ -1,74 +1,119 @@
-import { FormEvent, useState } from "react";
-import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
-import { useAuth } from "@/auth/AuthContext";
-import { FormField } from "@/components/ui/FormField";
+import { FormEvent, useMemo, useState } from "react";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { persistAuthSession, verifyRegistration } from "@/api/auth";
+import { AuthShell } from "@/components/auth/AuthShell";
+import { FormError } from "@/components/auth/FormError";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { isSixDigitCode, isSmuEmail } from "@/lib/validation";
+
+interface VerifyLocationState {
+  email?: string;
+}
 
 export function VerifyEmailPage() {
-  const auth = useAuth();
   const navigate = useNavigate();
-  const [params] = useSearchParams();
-  const email = params.get("email") ?? "";
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const initialEmail = useMemo(() => {
+    const state = location.state as VerifyLocationState | null;
+    return state?.email ?? searchParams.get("email") ?? "";
+  }, [location.state, searchParams]);
+
+  const [email, setEmail] = useState(initialEmail);
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
-  if (auth.isAuthenticated) return <Navigate to="/" replace />;
-  if (!email) return <Navigate to="/register" replace />;
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
 
-  const onSubmit = async (e: FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    setSubmitting(true);
-    try {
-      await auth.registerVerify(email, code);
-      navigate("/", { replace: true });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setSubmitting(false);
+    if (!isSmuEmail(email)) {
+      setError("Use an SMU email ending in @smu.edu.sg.");
+      return;
     }
-  };
+
+    if (!isSixDigitCode(code)) {
+      setError("Verification code must be 6 digits.");
+      return;
+    }
+
+    setError(null);
+    setIsLoading(true);
+
+    try {
+      const response = await verifyRegistration({ email, code });
+      persistAuthSession(response);
+      navigate("/dashboard");
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Unable to verify your email. Please try again.",
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-slate-950 to-slate-900 text-slate-100">
-      <div className="w-full max-w-md rounded-lg border border-slate-800 bg-slate-900/60 p-8">
-        <h1 className="text-2xl font-semibold">Check your email</h1>
-        <p className="mt-1 text-sm text-slate-400">
-          We sent a 6-digit code to <span className="text-slate-200">{email}</span>. Enter it below.
-        </p>
+    <AuthShell
+      footerText="Need to restart?"
+      footerLinkText="Create account"
+      footerLinkTo="/register"
+    >
+      <Card>
+        <CardHeader>
+          <CardTitle>Verify Email</CardTitle>
+          <CardDescription>
+            Enter the 6-digit code sent to your SMU inbox.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form className="space-y-5" onSubmit={handleSubmit}>
+            <FormError message={error} />
 
-        <form onSubmit={onSubmit} className="mt-6 space-y-4">
-          <FormField
-            label="Verification code"
-            name="code"
-            value={code}
-            onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-            required
-            inputMode="numeric"
-            autoComplete="one-time-code"
-            placeholder="000000"
-            maxLength={6}
-          />
+            <div className="space-y-2">
+              <Label htmlFor="email">SMU email</Label>
+              <Input
+                id="email"
+                type="email"
+                autoComplete="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                required
+              />
+            </div>
 
-          {error && (
-            <p className="rounded border border-red-900/40 bg-red-950/30 px-3 py-2 text-sm text-red-400">
-              {error}
-            </p>
-          )}
+            <div className="space-y-2">
+              <Label htmlFor="code">Verification code</Label>
+              <Input
+                id="code"
+                inputMode="numeric"
+                maxLength={6}
+                pattern="\d{6}"
+                value={code}
+                onChange={(event) =>
+                  setCode(event.target.value.replace(/\D/g, "").slice(0, 6))
+                }
+                required
+              />
+            </div>
 
-          <button
-            type="submit"
-            disabled={submitting || code.length !== 6}
-            className="w-full rounded bg-indigo-500 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-400 disabled:opacity-60"
-          >
-            {submitting ? "Verifying…" : "Verify"}
-          </button>
-        </form>
-
-        <p className="mt-6 text-center text-xs text-slate-500">
-          Code expires in 15 minutes. Didn't get it? Re-register to send a new one.
-        </p>
-      </div>
-    </div>
+            <Button className="w-full" type="submit" disabled={isLoading}>
+              {isLoading ? "Verifying..." : "Verify and continue"}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+    </AuthShell>
   );
 }

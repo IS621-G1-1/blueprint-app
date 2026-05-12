@@ -1,91 +1,143 @@
 import { FormEvent, useState } from "react";
-import { Link, Navigate, useNavigate } from "react-router-dom";
-import { useAuth } from "@/auth/AuthContext";
-import { FormField } from "@/components/ui/FormField";
+import { useNavigate } from "react-router-dom";
+import { requestRegistration } from "@/api/auth";
+import { AuthShell } from "@/components/auth/AuthShell";
+import { FormError } from "@/components/auth/FormError";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { isSmuEmail } from "@/lib/validation";
 
 export function RegisterPage() {
-  const auth = useAuth();
   const navigate = useNavigate();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
-  if (auth.isAuthenticated) return <Navigate to="/" replace />;
-
-  const onSubmit = async (e: FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    setSubmitting(true);
-    try {
-      await auth.registerRequest(name, email, password);
-      navigate(`/verify-email?email=${encodeURIComponent(email)}`, { replace: true });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setSubmitting(false);
+  function validateForm() {
+    if (!isSmuEmail(email)) {
+      return "Use an SMU email ending in @smu.edu.sg.";
     }
-  };
+
+    if (password.length < 8) {
+      return "Password must be at least 8 characters.";
+    }
+
+    if (password !== confirmPassword) {
+      return "Passwords do not match.";
+    }
+
+    return null;
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const validationError = validateForm();
+
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
+    setError(null);
+    setIsLoading(true);
+
+    try {
+      await requestRegistration({ name, email, password });
+      navigate(`/verify-email?email=${encodeURIComponent(email)}`, {
+        state: { email },
+      });
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Unable to start registration. Please try again.",
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-slate-950 to-slate-900 text-slate-100">
-      <div className="w-full max-w-md rounded-lg border border-slate-800 bg-slate-900/60 p-8">
-        <h1 className="text-2xl font-semibold">Create your Blueprint account</h1>
-        <p className="mt-1 text-sm text-slate-400">Plan modules, build timetables, share with friends.</p>
+    <AuthShell
+      footerText="Already registered?"
+      footerLinkText="Sign in"
+      footerLinkTo="/login"
+    >
+      <Card>
+        <CardHeader>
+          <CardTitle>Create Account</CardTitle>
+          <CardDescription>
+            Verify your SMU email before entering BlueprInT.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form className="space-y-5" onSubmit={handleSubmit}>
+            <FormError message={error} />
 
-        <form onSubmit={onSubmit} className="mt-6 space-y-4">
-          <FormField
-            label="Full name"
-            name="name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            required
-            autoComplete="name"
-          />
-          <FormField
-            label="Email"
-            type="email"
-            name="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            autoComplete="email"
-          />
-          <FormField
-            label="Password"
-            type="password"
-            name="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            autoComplete="new-password"
-            minLength={8}
-          />
-          <p className="text-xs text-slate-500">At least 8 characters.</p>
+            <div className="space-y-2">
+              <Label htmlFor="name">Full name</Label>
+              <Input
+                id="name"
+                autoComplete="name"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                required
+              />
+            </div>
 
-          {error && (
-            <p className="rounded border border-red-900/40 bg-red-950/30 px-3 py-2 text-sm text-red-400">
-              {error}
-            </p>
-          )}
+            <div className="space-y-2">
+              <Label htmlFor="email">SMU email</Label>
+              <Input
+                id="email"
+                type="email"
+                autoComplete="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                required
+              />
+            </div>
 
-          <button
-            type="submit"
-            disabled={submitting}
-            className="w-full rounded bg-indigo-500 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-400 disabled:opacity-60"
-          >
-            {submitting ? "Sending code…" : "Send verification code"}
-          </button>
-        </form>
+            <div className="space-y-2">
+              <Label htmlFor="password">Password</Label>
+              <Input
+                id="password"
+                type="password"
+                autoComplete="new-password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                required
+              />
+            </div>
 
-        <p className="mt-6 text-center text-sm text-slate-400">
-          Already have an account?{" "}
-          <Link to="/login" className="text-indigo-400 hover:text-indigo-300">
-            Sign in
-          </Link>
-        </p>
-      </div>
-    </div>
+            <div className="space-y-2">
+              <Label htmlFor="confirm-password">Confirm password</Label>
+              <Input
+                id="confirm-password"
+                type="password"
+                autoComplete="new-password"
+                value={confirmPassword}
+                onChange={(event) => setConfirmPassword(event.target.value)}
+                required
+              />
+            </div>
+
+            <Button className="w-full" type="submit" disabled={isLoading}>
+              {isLoading ? "Sending code..." : "Request verification code"}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+    </AuthShell>
   );
 }
