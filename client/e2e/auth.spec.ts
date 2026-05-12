@@ -7,7 +7,7 @@ test.describe("Login", () => {
     await page.fill('input[type="password"]', "password96");
     await page.click('button[type="submit"]');
     await expect(page).toHaveURL("/dashboard");
-    await expect(page.getByRole("heading", { level: 1 })).toContainText("Hello aravinth");
+    await expect(page.getByRole("heading", { level: 1 })).toContainText("Welcome back, aravinth");
   });
 
   test("shows error on invalid password", async ({ page }) => {
