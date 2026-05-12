@@ -1,0 +1,141 @@
+name: dev-to-main
+
+# Runs on PRs from `dev` (or release branches) into `main`.
+# Includes everything in feature-to-dev plus the heavier security/E2E gates.
+# Most security jobs are scaffolded but disabled (`if: false`) until tooling is wired.
+# See blueprint-knowledge-base/devsecops/ for plans on enabling each.
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ---- Reused fast-feedback gates ----
+
+  client-checks:
+    name: client (lint + typecheck + test)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test --if-present
+
+  server-checks:
+    name: server (lint + typecheck + test)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test --if-present
+
+  gitleaks:
+    name: gitleaks (secret scan)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install gitleaks
+        run: |
+          curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.27.2/gitleaks_8.27.2_linux_x64.tar.gz \
+            | tar -xz gitleaks
+          sudo mv gitleaks /usr/local/bin/
+      - name: Scan for secrets
+        run: gitleaks detect --source . --log-opts="HEAD~${{ github.event.pull_request.commits }}..HEAD" --verbose
+
+  # ---- Heavy gates (placeholders) ----
+  # Each is structurally valid but skipped (`if: false`) until enabled.
+  # To enable: remove `if: false`, fill in the actual steps, follow the linked runbook.
+
+  sonarqube-scan:
+    name: SAST — SonarQube quality gate
+    # See blueprint-knowledge-base/devsecops/sast.md
+    runs-on: ubuntu-latest
+    if: false
+    steps:
+      - run: echo "TODO — see devsecops/sast.md"
+
+  trivy-fs:
+    name: SCA — Trivy filesystem scan
+    # See blueprint-knowledge-base/devsecops/dependency-scanning.md
+    runs-on: ubuntu-latest
+    if: false
+    steps:
+      - run: echo "TODO — see devsecops/dependency-scanning.md"
+
+  trivy-image:
+    name: Container — Trivy image scan + Copa patch
+    # See blueprint-knowledge-base/devsecops/container-security.md
+    runs-on: ubuntu-latest
+    if: false
+    steps:
+      - run: echo "TODO — see devsecops/container-security.md"
+
+  playwright-e2e:
+    name: E2E — Playwright
+    runs-on: ubuntu-latest
+    needs: [client-checks, server-checks, gitleaks]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - name: Install client deps
+        run: npm ci
+        working-directory: client
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+        working-directory: client
+      - name: Create .env for CI
+        run: printf 'POSTGRES_PASSWORD=ci_test_password\nJWT_SECRET=ci_test_jwt_secret\n' > .env
+      - name: Build and start stack
+        run: docker compose up -d --build
+      - name: Wait for server health
+        run: timeout 120 bash -c 'until curl -sf http://localhost:4000/health; do sleep 3; done'
+      - name: Seed test user
+        run: |
+          docker cp server/scripts/seed-ci.mjs blueprint-app-server-1:/app/seed-ci.mjs
+          docker exec blueprint-app-server-1 node /app/seed-ci.mjs
+      - name: Run Playwright tests
+        run: npm run test:e2e
+        working-directory: client
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: client/playwright-report/
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
+
+  zap-baseline:
+    name: DAST — OWASP ZAP baseline
+    # See blueprint-knowledge-base/devsecops/dast.md
+    runs-on: ubuntu-latest
+    if: false
+    steps:
+      - run: echo "TODO — see devsecops/dast.md"

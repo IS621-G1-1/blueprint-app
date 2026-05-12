@@ -1,0 +1,88 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed-up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  STUDENT
+  ADVISOR
+  ADMIN
+}
+
+model User {
+  id                String     @id @default(cuid())
+  email             String     @unique
+  name              String
+  passwordHash      String
+  role              Role       @default(STUDENT)
+  emailVerifiedAt   DateTime?
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  semesterPlans     SemesterPlan[]
+
+  @@map("users")
+}
+
+model PendingRegistration {
+  id          String    @id @default(cuid())
+  email       String    @unique
+  name        String
+  passwordHash String
+  codeHash    String
+  expiresAt   DateTime
+  attempts    Int       @default(0)
+  consumedAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@map("pending_registrations")
+}
+
+model Module {
+  id             String          @id @default(uuid())
+  code           String          @unique
+  name           String
+  credits        Int
+  description    String?
+  school         String?
+  createdAt      DateTime        @default(now())
+  plannedModules PlannedModule[]
+
+  @@map("modules")
+}
+
+model SemesterPlan {
+  id             String          @id @default(uuid())
+  userId         String
+  year           Int
+  term           String
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plannedModules PlannedModule[]
+
+  @@unique([userId, year, term])
+  @@map("semester_plans")
+}
+
+model PlannedModule {
+  id             String       @id @default(uuid())
+  semesterPlanId String
+  moduleId       String
+  createdAt      DateTime     @default(now())
+  semesterPlan   SemesterPlan @relation(fields: [semesterPlanId], references: [id], onDelete: Cascade)
+  module         Module       @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  @@unique([semesterPlanId, moduleId])
+  @@map("planned_modules")
+}

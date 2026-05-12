@@ -1,0 +1,110 @@
+name: release
+
+# Runs on every merge to main.
+# 1. Reads the bump label on the merged PR (bump:major / bump:minor / bump:patch)
+# 2. Increments the semver tag (defaults to patch if no label)
+# 3. Builds client + server Docker images and pushes to GHCR
+# 4. Creates a GitHub Release with auto-generated notes
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  release:
+    name: Tag, build & publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write    # create git tags + GitHub releases
+      packages: write    # push to GHCR
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get latest semver tag
+        id: latest
+        run: |
+          TAG=$(git tag --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
+          echo "tag=${TAG:-v0.0.0}" >> "$GITHUB_OUTPUT"
+
+      - name: Read bump label from merged PR
+        id: bump
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          LABELS=$(gh api repos/${{ github.repository }}/commits/${{ github.sha }}/pulls \
+            --jq '.[0].labels[].name' 2>/dev/null || echo "")
+          if echo "$LABELS" | grep -q "bump:major"; then
+            echo "type=major" >> "$GITHUB_OUTPUT"
+          elif echo "$LABELS" | grep -q "bump:minor"; then
+            echo "type=minor" >> "$GITHUB_OUTPUT"
+          else
+            echo "type=patch" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Calculate next version
+        id: version
+        run: |
+          CURRENT=${{ steps.latest.outputs.tag }}
+          V=${CURRENT#v}
+          MAJOR=$(echo "$V" | cut -d. -f1)
+          MINOR=$(echo "$V" | cut -d. -f2)
+          PATCH=$(echo "$V" | cut -d. -f3)
+          case "${{ steps.bump.outputs.type }}" in
+            major) NEXT="v$((MAJOR+1)).0.0" ;;
+            minor) NEXT="v${MAJOR}.$((MINOR+1)).0" ;;
+            *)     NEXT="v${MAJOR}.${MINOR}.$((PATCH+1))" ;;
+          esac
+          echo "next=$NEXT" >> "$GITHUB_OUTPUT"
+          echo "Next version: $NEXT (bump: ${{ steps.bump.outputs.type }})"
+
+      - name: Push version tag
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "${{ steps.version.outputs.next }}"
+          git push origin "${{ steps.version.outputs.next }}"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push — client
+        uses: docker/build-push-action@v6
+        with:
+          context: ./client
+          push: true
+          build-args: |
+            VITE_API_BASE_URL=${{ vars.VITE_API_BASE_URL || 'http://localhost:4000' }}
+          tags: |
+            ghcr.io/is621-g1-1/blueprint-app/client:${{ steps.version.outputs.next }}
+            ghcr.io/is621-g1-1/blueprint-app/client:latest
+          cache-from: type=gha
+          cache-to:   type=gha,mode=max
+
+      - name: Build and push — server
+        uses: docker/build-push-action@v6
+        with:
+          context: ./server
+          push: true
+          tags: |
+            ghcr.io/is621-g1-1/blueprint-app/server:${{ steps.version.outputs.next }}
+            ghcr.io/is621-g1-1/blueprint-app/server:latest
+          cache-from: type=gha
+          cache-to:   type=gha,mode=max
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ steps.version.outputs.next }}" \
+            --title "Release ${{ steps.version.outputs.next }}" \
+            --generate-notes
