@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 test.describe("Login", () => {
   test("redirects to dashboard on valid credentials", async ({ page }) => {
     await page.goto("/login");
-    await page.fill('input[type="email"]', "ara@smu.edu.sg");
+    await page.fill('input[type="email"]', "ara@mitb.smu.edu.sg");
     await page.fill('input[type="password"]', "password96");
     await page.click('button[type="submit"]');
     await expect(page).toHaveURL("/dashboard");
@@ -12,7 +12,7 @@ test.describe("Login", () => {
 
   test("shows error on invalid password", async ({ page }) => {
     await page.goto("/login");
-    await page.fill('input[type="email"]', "ara@smu.edu.sg");
+    await page.fill('input[type="email"]', "ara@mitb.smu.edu.sg");
     await page.fill('input[type="password"]', "wrongpassword");
     await page.click('button[type="submit"]');
     await expect(page.getByRole("alert")).toBeVisible();
@@ -21,7 +21,7 @@ test.describe("Login", () => {
 
   test("shows error on unknown email", async ({ page }) => {
     await page.goto("/login");
-    await page.fill('input[type="email"]', "nobody@smu.edu.sg");
+    await page.fill('input[type="email"]', "nobody@mitb.smu.edu.sg");
     await page.fill('input[type="password"]', "password96");
     await page.click('button[type="submit"]');
     await expect(page.getByRole("alert")).toBeVisible();

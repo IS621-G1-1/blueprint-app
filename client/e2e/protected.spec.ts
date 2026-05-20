@@ -17,7 +17,7 @@ test.describe("Protected routes", () => {
 
   test("authenticated user can navigate between protected routes", async ({ page }) => {
     await page.goto("/login");
-    await page.fill('input[type="email"]', "ara@smu.edu.sg");
+    await page.fill('input[type="email"]', "ara@mitb.smu.edu.sg");
     await page.fill('input[type="password"]', "password96");
     await page.click('button[type="submit"]');
     await expect(page).toHaveURL("/dashboard");

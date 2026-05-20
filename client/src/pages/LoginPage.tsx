@@ -47,7 +47,7 @@ export function LoginPage() {
       token: "temporary-dev-token",
       user: {
         id: "temporary-student",
-        email: "student@smu.edu.sg",
+        email: "student@mitb.smu.edu.sg",
         name: "SMU Student",
         role: "STUDENT",
       },
