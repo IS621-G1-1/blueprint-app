@@ -8,10 +8,10 @@ const prisma = new PrismaClient();
 const hash = await bcrypt.hash("password96", 10);
 
 await prisma.user.upsert({
-  where: { email: "ara@smu.edu.sg" },
+  where: { email: "ara@mitb.smu.edu.sg" },
   update: {},
   create: {
-    email: "ara@smu.edu.sg",
+    email: "ara@mitb.smu.edu.sg",
     name: "aravinth",
     passwordHash: hash,
     role: "STUDENT",

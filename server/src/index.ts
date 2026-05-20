@@ -1,9 +1,13 @@
-import "dotenv/config";
+import { config } from "dotenv";
+import { resolve } from "node:path";
 import express from "express";
 import cors from "cors";
 import authRoutes from "./routes/auth.routes.js";
 import moduleRoutes from "./routes/module.routes.js";
 import semesterPlanRoutes from "./routes/semesterPlan.routes.js";
+
+config();
+config({ path: resolve(process.cwd(), "../.env") });
 
 const app = express();
 const PORT = process.env.PORT || 4000;
