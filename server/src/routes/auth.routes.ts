@@ -51,7 +51,7 @@ router.post("/register/request", async (req, res) => {
     // Check if email is SMU email
     if (!isSmuEmail(data.email)) {
       return res.status(400).json({
-        error: "Only SMU emails (@smu.edu.sg) are allowed",
+        error: "Only SMU emails ending in smu.edu.sg are allowed",
       });
     }
 

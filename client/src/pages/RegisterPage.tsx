@@ -26,7 +26,7 @@ export function RegisterPage() {
 
   function validateForm() {
     if (!isSmuEmail(email)) {
-      return "Use an SMU email ending in @smu.edu.sg.";
+      return "Use an SMU email ending in smu.edu.sg.";
     }
 
     if (password.length < 8) {

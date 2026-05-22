@@ -37,7 +37,7 @@ export function VerifyEmailPage() {
     event.preventDefault();
 
     if (!isSmuEmail(email)) {
-      setError("Use an SMU email ending in @smu.edu.sg.");
+      setError("Use an SMU email ending in smu.edu.sg.");
       return;
     }
 
