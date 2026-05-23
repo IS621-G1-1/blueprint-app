@@ -38,7 +38,7 @@ services:
       SMTP_PORT: "1025"
       GMAIL_USER: ${GMAIL_USER:-}
       GMAIL_APP_PASSWORD: ${GMAIL_APP_PASSWORD:-}
-      EMAIL_FROM: ${EMAIL_FROM:-BlueprintT <noreply@blueprint.local>}
+      EMAIL_FROM: ${EMAIL_FROM:-BlueprInT <noreply@blueprint.local>}
       NODE_ENV: production
       CLIENT_ORIGIN: http://localhost:5173
       PORT: "4000"

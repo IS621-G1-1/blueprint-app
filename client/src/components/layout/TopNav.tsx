@@ -1,5 +1,6 @@
 import { CalendarDays, Home, ListChecks, User } from "lucide-react";
 import { NavLink } from "react-router-dom";
+import { BrandWordmark } from "@/components/BrandWordmark";
 import { cn } from "@/lib/utils";
 
 const navItems = [
@@ -14,9 +15,7 @@ export function TopNav() {
     <header className="border-b border-blue-400/25 bg-[#061225]/95 backdrop-blur">
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-5 px-4 py-5 lg:flex-row lg:items-center lg:justify-between">
         <NavLink aria-label="BlueprInT home" className="w-fit" to="/dashboard">
-          <span className="text-2xl font-bold tracking-normal text-white">
-            <span className="text-accent">Blue</span>pr<span className="text-accent">In</span>T
-          </span>
+          <BrandWordmark className="text-2xl" />
           <span className="mt-1 block text-xs font-medium uppercase tracking-[0.2em] text-blue-100/60">
             Academic Journey Planner
           </span>
