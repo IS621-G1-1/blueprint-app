@@ -167,11 +167,21 @@ jobs:
           format: json
           output: trivy-server.json
           exit-code: '0'
+      - name: Count CRITICAL CVEs
+        id: cve-count
+        run: |
+          client=$(jq '[.Results[]?.Vulnerabilities // [] | .[] | select(.Severity=="CRITICAL")] | length' trivy-client.json)
+          server=$(jq '[.Results[]?.Vulnerabilities // [] | .[] | select(.Severity=="CRITICAL")] | length' trivy-server.json)
+          echo "client=$client" >> $GITHUB_OUTPUT
+          echo "server=$server" >> $GITHUB_OUTPUT
+          echo "Client CRITICAL CVEs: $client  |  Server CRITICAL CVEs: $server"
       - name: Install Copa
+        if: steps.cve-count.outputs.client != '0' || steps.cve-count.outputs.server != '0'
         run: |
           curl -fsSL https://github.com/project-copacetic/copacetic/releases/download/v0.14.1/copa_0.14.1_linux_amd64.tar.gz | tar xz
           sudo mv copa /usr/local/bin/copa
       - name: Copa patch client image
+        if: steps.cve-count.outputs.client != '0'
         run: |
           copa patch \
             -i $CLIENT_IMAGE:${{ github.sha }} \
@@ -179,6 +189,7 @@ jobs:
             -t ${{ github.sha }}-patched \
             --addr docker-container://buildx_buildkit_default0
       - name: Copa patch server image
+        if: steps.cve-count.outputs.server != '0'
         run: |
           copa patch \
             -i $SERVER_IMAGE:${{ github.sha }} \
@@ -186,6 +197,7 @@ jobs:
             -t ${{ github.sha }}-patched \
             --addr docker-container://buildx_buildkit_default0
       - name: Trivy re-scan client patched image
+        if: steps.cve-count.outputs.client != '0'
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: image
@@ -195,6 +207,7 @@ jobs:
           output: trivy-client-patched.txt
           exit-code: '1'
       - name: Trivy re-scan server patched image
+        if: steps.cve-count.outputs.server != '0'
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: image
@@ -203,6 +216,10 @@ jobs:
           format: table
           output: trivy-server-patched.txt
           exit-code: '1'
+      - name: Fail if unpatched CRITICAL CVEs remain
+        if: steps.cve-count.outputs.client != '0' || steps.cve-count.outputs.server != '0'
+        run: |
+          echo "Copa patching complete. Re-scan above will have failed if CRITICAL CVEs remain."
       - name: Upload image scan reports
         if: always()
         uses: actions/upload-artifact@v4
