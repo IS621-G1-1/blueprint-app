@@ -96,19 +96,140 @@ jobs:
 
   trivy-fs:
     name: SCA — Trivy filesystem scan
-    # See blueprint-knowledge-base/devsecops/dependency-scanning.md
     runs-on: ubuntu-latest
-    if: false
     steps:
-      - run: echo "TODO — see devsecops/dependency-scanning.md"
+      - uses: actions/checkout@v4
+      - name: Trivy client dependency scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: client
+          severity: CRITICAL
+          exit-code: '1'
+          format: table
+          output: trivy-client-fs.txt
+      - name: Trivy server dependency scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: server
+          severity: CRITICAL
+          exit-code: '1'
+          format: table
+          output: trivy-server-fs.txt
+      - name: Upload filesystem scan reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-fs-reports
+          path: trivy-*-fs.txt
 
   trivy-image:
     name: Container — Trivy image scan + Copa patch
-    # See blueprint-knowledge-base/devsecops/container-security.md
     runs-on: ubuntu-latest
-    if: false
+    permissions:
+      packages: write
+    env:
+      REGISTRY: ghcr.io
+      CLIENT_IMAGE: ghcr.io/is621-g1-1/blueprint-client
+      SERVER_IMAGE: ghcr.io/is621-g1-1/blueprint-server
     steps:
-      - run: echo "TODO — see devsecops/container-security.md"
+      - uses: actions/checkout@v4
+      - name: Log in to GHCR
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2 # v4.1.0
+      - name: Build and push images to GHCR
+        run: |
+          docker build -t $CLIENT_IMAGE:${{ github.sha }} ./client
+          docker push $CLIENT_IMAGE:${{ github.sha }}
+          docker build -t $SERVER_IMAGE:${{ github.sha }} ./server
+          docker push $SERVER_IMAGE:${{ github.sha }}
+      - name: Trivy scan client image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: ${{ env.CLIENT_IMAGE }}:${{ github.sha }}
+          severity: CRITICAL
+          format: json
+          output: trivy-client.json
+          exit-code: '0'
+      - name: Trivy scan server image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: ${{ env.SERVER_IMAGE }}:${{ github.sha }}
+          severity: CRITICAL
+          format: json
+          output: trivy-server.json
+          exit-code: '0'
+      - name: Count CRITICAL CVEs
+        id: cve-count
+        run: |
+          client=$(jq '[.Results[]?.Vulnerabilities // [] | .[] | select(.Severity=="CRITICAL")] | length' trivy-client.json)
+          server=$(jq '[.Results[]?.Vulnerabilities // [] | .[] | select(.Severity=="CRITICAL")] | length' trivy-server.json)
+          echo "client=$client" >> $GITHUB_OUTPUT
+          echo "server=$server" >> $GITHUB_OUTPUT
+          echo "Client CRITICAL CVEs: $client  |  Server CRITICAL CVEs: $server"
+      - name: Install Copa
+        if: steps.cve-count.outputs.client != '0' || steps.cve-count.outputs.server != '0'
+        run: |
+          curl -fsSL https://github.com/project-copacetic/copacetic/releases/download/v0.14.1/copa_0.14.1_linux_amd64.tar.gz | tar xz
+          sudo mv copa /usr/local/bin/copa
+      - name: Copa patch client image
+        if: steps.cve-count.outputs.client != '0'
+        run: |
+          copa patch \
+            -i $CLIENT_IMAGE:${{ github.sha }} \
+            -r trivy-client.json \
+            -t ${{ github.sha }}-patched \
+            --addr docker-container://buildx_buildkit_default0
+      - name: Copa patch server image
+        if: steps.cve-count.outputs.server != '0'
+        run: |
+          copa patch \
+            -i $SERVER_IMAGE:${{ github.sha }} \
+            -r trivy-server.json \
+            -t ${{ github.sha }}-patched \
+            --addr docker-container://buildx_buildkit_default0
+      - name: Trivy re-scan client patched image
+        if: steps.cve-count.outputs.client != '0'
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: ${{ env.CLIENT_IMAGE }}:${{ github.sha }}-patched
+          severity: CRITICAL
+          format: table
+          output: trivy-client-patched.txt
+          exit-code: '1'
+      - name: Trivy re-scan server patched image
+        if: steps.cve-count.outputs.server != '0'
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: ${{ env.SERVER_IMAGE }}:${{ github.sha }}-patched
+          severity: CRITICAL
+          format: table
+          output: trivy-server-patched.txt
+          exit-code: '1'
+      - name: Fail if unpatched CRITICAL CVEs remain
+        if: steps.cve-count.outputs.client != '0' || steps.cve-count.outputs.server != '0'
+        run: |
+          echo "Copa patching complete. Re-scan above will have failed if CRITICAL CVEs remain."
+      - name: Upload image scan reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-image-reports
+          path: |
+            trivy-client.json
+            trivy-server.json
+            trivy-client-patched.txt
+            trivy-server-patched.txt
 
   playwright-e2e:
     name: E2E — Playwright
