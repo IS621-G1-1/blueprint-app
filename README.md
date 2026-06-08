@@ -210,7 +210,7 @@ docker pull ghcr.io/is621-g1-1/blueprint-app/server:latest
 - **No rate limiting** on `/auth/login` or `/auth/register/request` — add `express-rate-limit` when needed.
 - **JWT_SECRET rotation invalidates all sessions** — only revocation lever today.
 - **No password reset flow** — deferred.
-- **SMU email enforced at registration** — `@smu.edu.sg` check in `RegisterPage` and `auth.routes.ts`.
+- **SMU email enforced at registration** — `smu.edu.sg` domain check in `RegisterPage` and `auth.routes.ts`.
 
 ## Local debugging
 
