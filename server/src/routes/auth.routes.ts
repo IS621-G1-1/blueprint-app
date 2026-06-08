@@ -3,17 +3,33 @@ import { z } from "zod";
 import bcrypt from "bcryptjs";
 import prisma from "../lib/prisma.js";
 import { generateToken } from "../lib/jwt.js";
+import { requireAuth } from "../middleware/auth.middleware.js";
 import { generateVerificationCode, hashCode, verifyCode } from "../lib/verificationCode.js";
 import { sendVerificationEmail } from "../lib/email.js";
 import { isSmuEmail } from "../utils/isSmuEmail.js";
 
 const router = Router();
 
+const MIN_PASSWORD_LENGTH = 12;
+
 // Validation schemas
 const registerRequestSchema = z.object({
   name: z.string().min(1, "Name is required"),
   email: z.string().email("Invalid email"),
-  password: z.string().min(8, "Password must be at least 8 characters"),
+  password: z
+    .string()
+    .min(MIN_PASSWORD_LENGTH, `Password must be at least ${MIN_PASSWORD_LENGTH} characters`),
+});
+
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1, "Current password is required"),
+  newPassword: z
+    .string()
+    .min(MIN_PASSWORD_LENGTH, `Password must be at least ${MIN_PASSWORD_LENGTH} characters`),
+});
+
+const deleteAccountSchema = z.object({
+  password: z.string().min(1, "Password is required"),
 });
 
 const verifyEmailSchema = z.object({
@@ -160,6 +176,7 @@ router.post("/register/verify", async (req, res) => {
       userId: user.id,
       email: user.email,
       role: user.role,
+      tokenVersion: user.tokenVersion,
     });
 
     return res.json({
@@ -213,6 +230,7 @@ router.post("/login", async (req, res) => {
       userId: user.id,
       email: user.email,
       role: user.role,
+      tokenVersion: user.tokenVersion,
     });
 
     return res.json({
@@ -230,6 +248,104 @@ router.post("/login", async (req, res) => {
     }
 
     console.error("Login error:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// POST /auth/logout
+router.post("/logout", requireAuth, async (req, res) => {
+  try {
+    if (!req.auth) {
+      return res.status(401).json({ error: "Missing or invalid authorization token" });
+    }
+
+    await prisma.user.update({
+      where: { id: req.auth.userId },
+      data: { tokenVersion: { increment: 1 } },
+    });
+
+    return res.json({ message: "Logged out successfully" });
+  } catch (error) {
+    console.error("Logout error:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// POST /auth/change-password
+router.post("/change-password", requireAuth, async (req, res) => {
+  try {
+    if (!req.auth) {
+      return res.status(401).json({ error: "Missing or invalid authorization token" });
+    }
+
+    const data = changePasswordSchema.parse(req.body);
+
+    const user = await prisma.user.findUnique({
+      where: { id: req.auth.userId },
+      select: { id: true, passwordHash: true },
+    });
+
+    if (!user) {
+      return res.status(401).json({ error: "Missing or invalid authorization token" });
+    }
+
+    const isCurrentPasswordValid = await bcrypt.compare(data.currentPassword, user.passwordHash);
+
+    if (!isCurrentPasswordValid) {
+      return res.status(400).json({ error: "Current password is incorrect" });
+    }
+
+    const passwordHash = await bcrypt.hash(data.newPassword, 10);
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { passwordHash, tokenVersion: { increment: 1 } },
+    });
+
+    return res.json({ message: "Password changed successfully. Please log in again." });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ error: error.errors[0].message });
+    }
+
+    console.error("Change password error:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// DELETE /auth/account
+router.delete("/account", requireAuth, async (req, res) => {
+  try {
+    if (!req.auth) {
+      return res.status(401).json({ error: "Missing or invalid authorization token" });
+    }
+
+    const data = deleteAccountSchema.parse(req.body);
+
+    const user = await prisma.user.findUnique({
+      where: { id: req.auth.userId },
+      select: { id: true, passwordHash: true },
+    });
+
+    if (!user) {
+      return res.status(401).json({ error: "Missing or invalid authorization token" });
+    }
+
+    const isPasswordValid = await bcrypt.compare(data.password, user.passwordHash);
+
+    if (!isPasswordValid) {
+      return res.status(400).json({ error: "Password is incorrect" });
+    }
+
+    await prisma.user.delete({ where: { id: user.id } });
+
+    return res.json({ message: "Account deleted successfully" });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ error: error.errors[0].message });
+    }
+
+    console.error("Delete account error:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });

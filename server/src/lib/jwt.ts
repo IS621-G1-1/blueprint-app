@@ -4,6 +4,7 @@ interface TokenPayload {
   userId: string;
   email: string;
   role?: string;
+  tokenVersion: number;
 }
 
 const SECRET = process.env.JWT_SECRET || "your_jwt_secret_key";

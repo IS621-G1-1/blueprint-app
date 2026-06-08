@@ -28,6 +28,15 @@ export interface LoginPayload {
   password: string;
 }
 
+export interface ChangePasswordPayload {
+  currentPassword: string;
+  newPassword: string;
+}
+
+export interface DeleteAccountPayload {
+  password: string;
+}
+
 export interface MessageResponse {
   message: string;
 }
@@ -50,6 +59,20 @@ export class ApiError extends Error {
     super(message);
     this.name = "ApiError";
   }
+}
+
+async function parseResponse<TResponse>(response: Response): Promise<TResponse> {
+  const data = (await response.json().catch(() => ({}))) as TResponse | ApiErrorResponse;
+
+  if (!response.ok) {
+    const errorData = data as ApiErrorResponse;
+    throw new ApiError(
+      errorData.error ?? errorData.message ?? "Something went wrong. Please try again.",
+      response.status,
+    );
+  }
+
+  return data as TResponse;
 }
 
 async function postJson<TResponse, TPayload>(
@@ -108,6 +131,40 @@ export function login(payload: LoginPayload) {
     ...payload,
     email: payload.email.trim(),
   });
+}
+
+export function getAuthHeaders() {
+  const token = localStorage.getItem("blueprint_token");
+  return {
+    Authorization: `Bearer ${token ?? ""}`,
+    "Content-Type": "application/json",
+  };
+}
+
+export async function logout() {
+  const response = await fetch(`${API_BASE_URL}/auth/logout`, {
+    method: "POST",
+    headers: getAuthHeaders(),
+  });
+  return parseResponse<MessageResponse>(response);
+}
+
+export async function changePassword(payload: ChangePasswordPayload) {
+  const response = await fetch(`${API_BASE_URL}/auth/change-password`, {
+    method: "POST",
+    headers: getAuthHeaders(),
+    body: JSON.stringify(payload),
+  });
+  return parseResponse<MessageResponse>(response);
+}
+
+export async function deleteAccount(payload: DeleteAccountPayload) {
+  const response = await fetch(`${API_BASE_URL}/auth/account`, {
+    method: "DELETE",
+    headers: getAuthHeaders(),
+    body: JSON.stringify(payload),
+  });
+  return parseResponse<MessageResponse>(response);
 }
 
 export function persistAuthSession(response: AuthSuccessResponse) {

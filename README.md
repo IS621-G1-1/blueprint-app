@@ -101,11 +101,108 @@ npm install
 npm run dev
 ```
 
-## Branching & PR gates
+## Branching strategy
 
-`feature/* → dev → main`. Light gates on `dev` (lint, typecheck, test, gitleaks). Full security pipeline on `main` (+ SAST, Trivy, Cypress, ZAP placeholders).
+```
+feature/*  ──►  dev  ──►  main
+```
 
-See [`CONTRIBUTING.md`](../blueprint-knowledge-base) and [`.github/workflows/`](.github/workflows/).
+| Branch | Protection | Who can push |
+|--------|-----------|--------------|
+| `main` | PR required · 1 approval · all status checks · GPG signed commits | Admins only (bypass) |
+| `dev` | PR required · 1 approval · all status checks · GPG signed commits | Admins only (bypass) |
+| `feature/*` | None | Anyone |
+
+## CI pipelines
+
+### `feature/* → dev` (`feature-to-dev.yml`)
+
+Runs on every PR targeting `dev`. All three checks must pass before merge is allowed.
+
+| Job | What it does |
+|-----|-------------|
+| `client (lint + typecheck + test)` | `eslint` · `tsc -b` · Vitest unit tests |
+| `server (lint + typecheck + test)` | `tsc --noEmit` · Vitest unit tests |
+| `gitleaks (secret scan)` | Scans PR commits for leaked secrets |
+
+### `dev → main` (`dev-to-main.yml`)
+
+Runs on every PR targeting `main`. Includes all `feature-to-dev` gates plus the E2E job.
+
+| Job | What it does |
+|-----|-------------|
+| `client (lint + typecheck + test)` | Same as above |
+| `server (lint + typecheck + test)` | Same as above |
+| `gitleaks (secret scan)` | Same as above |
+| `E2E — Playwright` | Builds full stack via `docker compose`, seeds test user, runs 6 browser tests |
+| `SAST — SonarQube` | Placeholder — `if: false` |
+| `SCA — Trivy filesystem` | Placeholder — `if: false` |
+| `Container — Trivy + Copa` | Placeholder — `if: false` |
+| `DAST — OWASP ZAP` | Placeholder — `if: false` |
+
+### Merge to `main` → release (`release.yml`)
+
+Triggers automatically after every merge to `main`.
+
+1. Reads the `bump:patch` / `bump:minor` / `bump:major` label from the merged PR (defaults to `patch`)
+2. Increments the latest semver tag (e.g. `v0.0.1` → `v0.0.2`)
+3. Builds `client` and `server` Docker images with layer caching
+4. Pushes to GHCR with the version tag and `latest`
+5. Creates a GitHub Release with auto-generated notes
+
+## Tests
+
+### Unit tests (Vitest)
+
+```bash
+cd client && npm test    # validation helpers, graduation requirement logic
+cd server && npm test    # isSmuEmail, verificationCode generate/hash/verify
+```
+
+### E2E tests (Playwright)
+
+Requires `docker compose up` to be running.
+
+```bash
+cd client && npm run test:e2e
+```
+
+| Spec | Covers |
+|------|--------|
+| `e2e/auth.spec.ts` | Login → dashboard redirect · invalid password error · unknown email error |
+| `e2e/protected.spec.ts` | Unauthenticated redirect to `/login` · authenticated nav between routes |
+
+## Releases and Docker images
+
+### Labelling PRs
+
+Apply exactly one bump label when opening a PR to `main`:
+
+| Label | When to use | Example |
+|-------|------------|---------|
+| `bump:patch` | Bug fixes, copy changes, CI tweaks | `v0.0.1` → `v0.0.2` |
+| `bump:minor` | New features, non-breaking additions | `v0.0.2` → `v0.1.0` |
+| `bump:major` | Breaking changes | `v0.1.0` → `v1.0.0` |
+
+If no label is applied the pipeline defaults to `patch`.
+
+### Viewing published images
+
+Images are published to the GitHub Container Registry after every merge to `main`.
+
+**GitHub UI:** https://github.com/orgs/IS621-G1-1/packages
+
+```bash
+# Pull a specific version
+docker pull ghcr.io/is621-g1-1/blueprint-app/client:v0.0.1
+docker pull ghcr.io/is621-g1-1/blueprint-app/server:v0.0.1
+
+# Always latest
+docker pull ghcr.io/is621-g1-1/blueprint-app/client:latest
+docker pull ghcr.io/is621-g1-1/blueprint-app/server:latest
+```
+
+> **Note:** After the first release, set image visibility to **Private** in the package settings at https://github.com/orgs/IS621-G1-1/packages.
 
 ## Security considerations
 
@@ -133,10 +230,9 @@ curl -s http://localhost:8025/api/v1/messages | jq '.[0].Content.Body'
 
 | Feature | Notes |
 |---------|-------|
-| Cypress E2E | Placeholder job in `dev-to-main.yml` |
-| SonarQube SAST | Placeholder job in `dev-to-main.yml` |
-| Trivy image scans | Placeholder job in `dev-to-main.yml` |
-| OWASP ZAP DAST | Placeholder job in `dev-to-main.yml` |
+| SonarQube SAST | Placeholder job in `dev-to-main.yml` — see `blueprint-knowledge-base/devsecops/sast.md` |
+| Trivy image scans | Placeholder job in `dev-to-main.yml` — see `blueprint-knowledge-base/devsecops/container-security.md` |
+| OWASP ZAP DAST | Placeholder job in `dev-to-main.yml` — see `blueprint-knowledge-base/devsecops/dast.md` |
 | Helm charts / K8s manifests | [`blueprint-infra/`](../blueprint-infra) |
 | Password reset flow | Future PR |
 | Rate limiting | Future PR |

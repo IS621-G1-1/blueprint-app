@@ -25,6 +25,7 @@ model User {
   email             String     @unique
   name              String
   passwordHash      String
+  tokenVersion      Int        @default(0)
   role              Role       @default(STUDENT)
   emailVerifiedAt   DateTime?
   createdAt         DateTime   @default(now())
