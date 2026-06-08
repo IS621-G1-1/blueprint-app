@@ -127,34 +127,33 @@ jobs:
   trivy-image:
     name: Container — Trivy image scan + Copa patch
     runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    env:
+      REGISTRY: ghcr.io
+      CLIENT_IMAGE: ghcr.io/is621-g1-1/blueprint-client
+      SERVER_IMAGE: ghcr.io/is621-g1-1/blueprint-server
     steps:
       - uses: actions/checkout@v4
-      - name: Configure insecure local registry and start it
+      - name: Log in to GHCR
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2 # v4.1.0
+      - name: Build and push images to GHCR
         run: |
-          echo '{"insecure-registries":["localhost:5000"]}' | sudo tee /etc/docker/daemon.json
-          sudo systemctl restart docker
-          docker run -d -p 5000:5000 --name local-registry registry:2
-      - name: Install Copa and buildkitd
-        run: |
-          curl -fsSL https://github.com/project-copacetic/copacetic/releases/download/v0.14.1/copa_0.14.1_linux_amd64.tar.gz | tar xz
-          sudo mv copa /usr/local/bin/copa
-          curl -fsSL https://github.com/moby/buildkit/releases/download/v0.30.0/buildkit-v0.30.0.linux-amd64.tar.gz | tar xz
-          sudo mv bin/buildkitd bin/buildctl /usr/local/bin/
-          sudo mkdir -p /etc/buildkit
-          printf '[registry."localhost:5000"]\n  http = true\n  insecure = true\n' | sudo tee /etc/buildkit/buildkitd.toml
-          sudo buildkitd --config /etc/buildkit/buildkitd.toml &>/tmp/buildkitd.log &
-          timeout 30 bash -c 'until sudo buildctl debug workers 2>/dev/null; do sleep 1; done'
-      - name: Build and push images to local registry
-        run: |
-          docker build -t localhost:5000/blueprint-client:${{ github.sha }} ./client
-          docker push localhost:5000/blueprint-client:${{ github.sha }}
-          docker build -t localhost:5000/blueprint-server:${{ github.sha }} ./server
-          docker push localhost:5000/blueprint-server:${{ github.sha }}
+          docker build -t $CLIENT_IMAGE:${{ github.sha }} ./client
+          docker push $CLIENT_IMAGE:${{ github.sha }}
+          docker build -t $SERVER_IMAGE:${{ github.sha }} ./server
+          docker push $SERVER_IMAGE:${{ github.sha }}
       - name: Trivy scan client image
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: image
-          image-ref: localhost:5000/blueprint-client:${{ github.sha }}
+          image-ref: ${{ env.CLIENT_IMAGE }}:${{ github.sha }}
           severity: CRITICAL
           format: json
           output: trivy-client.json
@@ -163,30 +162,34 @@ jobs:
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: image
-          image-ref: localhost:5000/blueprint-server:${{ github.sha }}
+          image-ref: ${{ env.SERVER_IMAGE }}:${{ github.sha }}
           severity: CRITICAL
           format: json
           output: trivy-server.json
           exit-code: '0'
+      - name: Install Copa
+        run: |
+          curl -fsSL https://github.com/project-copacetic/copacetic/releases/download/v0.14.1/copa_0.14.1_linux_amd64.tar.gz | tar xz
+          sudo mv copa /usr/local/bin/copa
       - name: Copa patch client image
         run: |
           copa patch \
-            -i localhost:5000/blueprint-client:${{ github.sha }} \
+            -i $CLIENT_IMAGE:${{ github.sha }} \
             -r trivy-client.json \
             -t ${{ github.sha }}-patched \
-            --addr unix:///run/buildkit/buildkitd.sock
+            --addr docker-container://buildx_buildkit_default0
       - name: Copa patch server image
         run: |
           copa patch \
-            -i localhost:5000/blueprint-server:${{ github.sha }} \
+            -i $SERVER_IMAGE:${{ github.sha }} \
             -r trivy-server.json \
             -t ${{ github.sha }}-patched \
-            --addr unix:///run/buildkit/buildkitd.sock
+            --addr docker-container://buildx_buildkit_default0
       - name: Trivy re-scan client patched image
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: image
-          image-ref: localhost:5000/blueprint-client:${{ github.sha }}-patched
+          image-ref: ${{ env.CLIENT_IMAGE }}:${{ github.sha }}-patched
           severity: CRITICAL
           format: table
           output: trivy-client-patched.txt
@@ -195,7 +198,7 @@ jobs:
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: image
-          image-ref: localhost:5000/blueprint-server:${{ github.sha }}-patched
+          image-ref: ${{ env.SERVER_IMAGE }}:${{ github.sha }}-patched
           severity: CRITICAL
           format: table
           output: trivy-server-patched.txt
