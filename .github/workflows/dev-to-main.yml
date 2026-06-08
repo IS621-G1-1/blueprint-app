@@ -157,6 +157,8 @@ jobs:
           image: blueprint-client:${{ github.sha }}
           image-report: trivy-client.json
           patched-tag: ${{ github.sha }}-patched
+      - name: Remove Copa container before reuse
+        run: docker rm -f copa-action || true
       - name: Copa patch server image
         uses: project-copacetic/copa-action@3843e22efdca421adb37aa8dec103a0f1db68544 # v1.2.1
         with:
