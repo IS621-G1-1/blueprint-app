@@ -16,6 +16,10 @@ server/node_modules/
 server/dist/
 server/.env
 
+# Coverage
+client/coverage/
+server/coverage/
+
 # Playwright
 client/test-results/
 client/playwright-report/

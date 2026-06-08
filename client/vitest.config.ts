@@ -11,5 +11,10 @@ export default defineConfig({
     environment: "jsdom",
     globals: true,
     exclude: ["e2e/**", "node_modules/**"],
+    coverage: {
+      provider: "v8",
+      reporter: ["lcov"],
+      reportsDirectory: "./coverage",
+    },
   },
 });
