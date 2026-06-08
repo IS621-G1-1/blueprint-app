@@ -129,13 +129,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Enable containerd image store
-        uses: docker/setup-docker-action@0234bb73ccb40f0c430b795634f9247e2b5c2d23 # v5.2.0
-        with:
-          daemon-config: |
-            {
-              "features": { "containerd-snapshotter": true }
-            }
+      - name: Install Copa and buildkitd
+        run: |
+          curl -fsSL https://github.com/project-copacetic/copacetic/releases/download/v0.14.1/copa_0.14.1_linux_amd64.tar.gz | tar xz
+          sudo mv copa /usr/local/bin/copa
+          curl -fsSL https://github.com/moby/buildkit/releases/download/v0.30.0/buildkit-v0.30.0.linux-amd64.tar.gz | tar xz
+          sudo mv bin/buildkitd bin/buildctl /usr/local/bin/
+          sudo buildkitd &>/tmp/buildkitd.log &
+          timeout 30 bash -c 'until sudo buildctl debug workers 2>/dev/null; do sleep 1; done'
       - name: Build client image
         run: docker build -t blueprint-client:${{ github.sha }} ./client
       - name: Build server image
@@ -159,19 +160,19 @@ jobs:
           output: trivy-server.json
           exit-code: '0'
       - name: Copa patch client image
-        uses: project-copacetic/copa-action@3843e22efdca421adb37aa8dec103a0f1db68544 # v1.2.1
-        with:
-          image: blueprint-client:${{ github.sha }}
-          image-report: trivy-client.json
-          patched-tag: ${{ github.sha }}-patched
-      - name: Remove Copa container before reuse
-        run: docker rm -f copa-action || true
+        run: |
+          copa patch \
+            -i blueprint-client:${{ github.sha }} \
+            -r trivy-client.json \
+            -t ${{ github.sha }}-patched \
+            --addr unix:///run/buildkit/buildkitd.sock
       - name: Copa patch server image
-        uses: project-copacetic/copa-action@3843e22efdca421adb37aa8dec103a0f1db68544 # v1.2.1
-        with:
-          image: blueprint-server:${{ github.sha }}
-          image-report: trivy-server.json
-          patched-tag: ${{ github.sha }}-patched
+        run: |
+          copa patch \
+            -i blueprint-server:${{ github.sha }} \
+            -r trivy-server.json \
+            -t ${{ github.sha }}-patched \
+            --addr unix:///run/buildkit/buildkitd.sock
       - name: Trivy re-scan client patched image
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
