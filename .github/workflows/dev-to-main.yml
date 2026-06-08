@@ -129,6 +129,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Enable containerd image store
+        uses: docker/setup-docker-action@0234bb73ccb40f0c430b795634f9247e2b5c2d23 # v5.2.0
+        with:
+          daemon-config: |
+            {
+              "features": { "containerd-snapshotter": true }
+            }
       - name: Build client image
         run: docker build -t blueprint-client:${{ github.sha }} ./client
       - name: Build server image
