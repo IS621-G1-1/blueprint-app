@@ -129,23 +129,32 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Configure insecure local registry and start it
+        run: |
+          echo '{"insecure-registries":["localhost:5000"]}' | sudo tee /etc/docker/daemon.json
+          sudo systemctl restart docker
+          docker run -d -p 5000:5000 --name local-registry registry:2
       - name: Install Copa and buildkitd
         run: |
           curl -fsSL https://github.com/project-copacetic/copacetic/releases/download/v0.14.1/copa_0.14.1_linux_amd64.tar.gz | tar xz
           sudo mv copa /usr/local/bin/copa
           curl -fsSL https://github.com/moby/buildkit/releases/download/v0.30.0/buildkit-v0.30.0.linux-amd64.tar.gz | tar xz
           sudo mv bin/buildkitd bin/buildctl /usr/local/bin/
-          sudo buildkitd &>/tmp/buildkitd.log &
+          sudo mkdir -p /etc/buildkit
+          printf '[registry."localhost:5000"]\n  http = true\n  insecure = true\n' | sudo tee /etc/buildkit/buildkitd.toml
+          sudo buildkitd --config /etc/buildkit/buildkitd.toml &>/tmp/buildkitd.log &
           timeout 30 bash -c 'until sudo buildctl debug workers 2>/dev/null; do sleep 1; done'
-      - name: Build client image
-        run: docker build -t blueprint-client:${{ github.sha }} ./client
-      - name: Build server image
-        run: docker build -t blueprint-server:${{ github.sha }} ./server
+      - name: Build and push images to local registry
+        run: |
+          docker build -t localhost:5000/blueprint-client:${{ github.sha }} ./client
+          docker push localhost:5000/blueprint-client:${{ github.sha }}
+          docker build -t localhost:5000/blueprint-server:${{ github.sha }} ./server
+          docker push localhost:5000/blueprint-server:${{ github.sha }}
       - name: Trivy scan client image
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: image
-          image-ref: blueprint-client:${{ github.sha }}
+          image-ref: localhost:5000/blueprint-client:${{ github.sha }}
           severity: CRITICAL
           format: json
           output: trivy-client.json
@@ -154,7 +163,7 @@ jobs:
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: image
-          image-ref: blueprint-server:${{ github.sha }}
+          image-ref: localhost:5000/blueprint-server:${{ github.sha }}
           severity: CRITICAL
           format: json
           output: trivy-server.json
@@ -162,14 +171,14 @@ jobs:
       - name: Copa patch client image
         run: |
           copa patch \
-            -i blueprint-client:${{ github.sha }} \
+            -i localhost:5000/blueprint-client:${{ github.sha }} \
             -r trivy-client.json \
             -t ${{ github.sha }}-patched \
             --addr unix:///run/buildkit/buildkitd.sock
       - name: Copa patch server image
         run: |
           copa patch \
-            -i blueprint-server:${{ github.sha }} \
+            -i localhost:5000/blueprint-server:${{ github.sha }} \
             -r trivy-server.json \
             -t ${{ github.sha }}-patched \
             --addr unix:///run/buildkit/buildkitd.sock
@@ -177,7 +186,7 @@ jobs:
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: image
-          image-ref: blueprint-client:${{ github.sha }}-patched
+          image-ref: localhost:5000/blueprint-client:${{ github.sha }}-patched
           severity: CRITICAL
           format: table
           output: trivy-client-patched.txt
@@ -186,7 +195,7 @@ jobs:
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: image
-          image-ref: blueprint-server:${{ github.sha }}-patched
+          image-ref: localhost:5000/blueprint-server:${{ github.sha }}-patched
           severity: CRITICAL
           format: table
           output: trivy-server-patched.txt
