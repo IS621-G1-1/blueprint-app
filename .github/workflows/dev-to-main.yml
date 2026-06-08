@@ -96,19 +96,101 @@ jobs:
 
   trivy-fs:
     name: SCA — Trivy filesystem scan
-    # See blueprint-knowledge-base/devsecops/dependency-scanning.md
     runs-on: ubuntu-latest
-    if: false
     steps:
-      - run: echo "TODO — see devsecops/dependency-scanning.md"
+      - uses: actions/checkout@v4
+      - name: Trivy client dependency scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: client
+          severity: CRITICAL
+          exit-code: '1'
+          format: table
+          output: trivy-client-fs.txt
+      - name: Trivy server dependency scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: server
+          severity: CRITICAL
+          exit-code: '1'
+          format: table
+          output: trivy-server-fs.txt
+      - name: Upload filesystem scan reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-fs-reports
+          path: trivy-*-fs.txt
 
   trivy-image:
     name: Container — Trivy image scan + Copa patch
-    # See blueprint-knowledge-base/devsecops/container-security.md
     runs-on: ubuntu-latest
-    if: false
     steps:
-      - run: echo "TODO — see devsecops/container-security.md"
+      - uses: actions/checkout@v4
+      - name: Build client image
+        run: docker build -t blueprint-client:${{ github.sha }} ./client
+      - name: Build server image
+        run: docker build -t blueprint-server:${{ github.sha }} ./server
+      - name: Trivy scan client image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: blueprint-client:${{ github.sha }}
+          severity: CRITICAL
+          format: json
+          output: trivy-client.json
+          exit-code: '0'
+      - name: Trivy scan server image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: blueprint-server:${{ github.sha }}
+          severity: CRITICAL
+          format: json
+          output: trivy-server.json
+          exit-code: '0'
+      - name: Copa patch client image
+        uses: project-copacetic/copa-action@3843e22efdca421adb37aa8dec103a0f1db68544 # v1.2.1
+        with:
+          image: blueprint-client:${{ github.sha }}
+          image-report: trivy-client.json
+          patched-tag: ${{ github.sha }}-patched
+      - name: Copa patch server image
+        uses: project-copacetic/copa-action@3843e22efdca421adb37aa8dec103a0f1db68544 # v1.2.1
+        with:
+          image: blueprint-server:${{ github.sha }}
+          image-report: trivy-server.json
+          patched-tag: ${{ github.sha }}-patched
+      - name: Trivy re-scan client patched image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: blueprint-client:${{ github.sha }}-patched
+          severity: CRITICAL
+          format: table
+          output: trivy-client-patched.txt
+          exit-code: '1'
+      - name: Trivy re-scan server patched image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: blueprint-server:${{ github.sha }}-patched
+          severity: CRITICAL
+          format: table
+          output: trivy-server-patched.txt
+          exit-code: '1'
+      - name: Upload image scan reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-image-reports
+          path: |
+            trivy-client.json
+            trivy-server.json
+            trivy-client-patched.txt
+            trivy-server-patched.txt
 
   playwright-e2e:
     name: E2E — Playwright
