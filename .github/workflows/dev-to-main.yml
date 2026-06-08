@@ -70,11 +70,20 @@ jobs:
 
   sonarqube-scan:
     name: SAST — SonarQube quality gate
-    # See blueprint-knowledge-base/devsecops/sast.md
     runs-on: ubuntu-latest
-    if: false
     steps:
-      - run: echo "TODO — see devsecops/sast.md"
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: SonarQube Scan
+        uses: SonarSource/sonarqube-scan-action@v5
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      - name: Quality Gate Check
+        uses: SonarSource/sonarqube-quality-gate-action@v1
+        timeout-minutes: 5
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
   trivy-fs:
     name: SCA — Trivy filesystem scan
