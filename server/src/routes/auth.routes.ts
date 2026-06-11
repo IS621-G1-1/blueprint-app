@@ -69,7 +69,13 @@ router.post("/register/request", async (req, res) => {
       where: { email: data.email },
     });
 
-    if (existingPending && !existingPending.consumedAt) {
+    const hasActivePendingRegistration =
+      existingPending &&
+      !existingPending.consumedAt &&
+      existingPending.attempts < 5 &&
+      new Date() <= existingPending.expiresAt;
+
+    if (hasActivePendingRegistration) {
       return res.status(400).json({
         error: "Registration already in progress. Check your email for verification code.",
       });
@@ -82,9 +88,18 @@ router.post("/register/request", async (req, res) => {
     const code = generateVerificationCode();
     const codeHash = await hashCode(code);
 
-    // Create pending registration
-    await prisma.pendingRegistration.create({
-      data: {
+    // Create pending registration, replacing any expired, consumed, or locked-out request.
+    await prisma.pendingRegistration.upsert({
+      where: { email: data.email },
+      update: {
+        name: data.name,
+        passwordHash,
+        codeHash,
+        expiresAt: new Date(Date.now() + 15 * 60 * 1000), // 15 minutes
+        attempts: 0,
+        consumedAt: null,
+      },
+      create: {
         email: data.email,
         name: data.name,
         passwordHash,
@@ -324,7 +339,7 @@ router.delete("/account", requireAuth, async (req, res) => {
 
     const user = await prisma.user.findUnique({
       where: { id: req.auth.userId },
-      select: { id: true, passwordHash: true },
+      select: { id: true, email: true, passwordHash: true },
     });
 
     if (!user) {
@@ -337,7 +352,10 @@ router.delete("/account", requireAuth, async (req, res) => {
       return res.status(400).json({ error: "Password is incorrect" });
     }
 
-    await prisma.user.delete({ where: { id: user.id } });
+    await prisma.$transaction([
+      prisma.pendingRegistration.deleteMany({ where: { email: user.email } }),
+      prisma.user.delete({ where: { id: user.id } }),
+    ]);
 
     return res.json({ message: "Account deleted successfully" });
   } catch (error) {
