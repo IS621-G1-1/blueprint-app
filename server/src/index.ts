@@ -11,13 +11,28 @@ config({ path: resolve(process.cwd(), "../.env") });
 
 const app = express();
 const PORT = process.env.PORT || 4000;
-const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || "http://localhost:5173";
+const CLIENT_ORIGINS = new Set(
+  (process.env.CLIENT_ORIGIN || "http://localhost:5173")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean),
+);
+
+CLIENT_ORIGINS.add("http://127.0.0.1:5173");
+CLIENT_ORIGINS.add("http://[::1]:5173");
 
 // Middleware
 app.use(express.json());
 app.use(
   cors({
-    origin: CLIENT_ORIGIN,
+    origin(origin, callback) {
+      if (!origin || CLIENT_ORIGINS.has(origin)) {
+        callback(null, true);
+        return;
+      }
+
+      callback(new Error("Not allowed by CORS"));
+    },
     credentials: true,
   })
 );

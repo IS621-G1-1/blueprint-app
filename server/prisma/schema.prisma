@@ -50,14 +50,19 @@ model PendingRegistration {
 }
 
 model Module {
-  id             String          @id @default(uuid())
-  code           String          @unique
-  name           String
-  credits        Int
-  description    String?
-  school         String?
-  createdAt      DateTime        @default(now())
-  plannedModules PlannedModule[]
+  id               String          @id @default(uuid())
+  code             String          @unique
+  name             String
+  credits          Int
+  description      String?
+  school           String?
+  prerequisites    String?
+  termAvailability String[]        @default([])
+  schedule         String?
+  gradingBasis     String?
+  examDates        String?
+  createdAt        DateTime        @default(now())
+  plannedModules   PlannedModule[]
 
   @@map("modules")
 }
