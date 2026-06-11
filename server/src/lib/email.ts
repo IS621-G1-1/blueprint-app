@@ -1,37 +1,43 @@
 import nodemailer from "nodemailer";
 
-const emailProvider = process.env.EMAIL_PROVIDER; // "mailpit" | undefined (defaults to gmail)
-const gmailUser = process.env.GMAIL_USER;
-const gmailAppPassword = process.env.GMAIL_APP_PASSWORD;
-const emailFrom =
-  process.env.EMAIL_FROM ||
-  (emailProvider === "mailpit"
-    ? "BlueprintT <noreply@blueprint.local>"
-    : `BlueprintT <${gmailUser}>`);
+function getEmailConfig() {
+  const emailProvider = process.env.EMAIL_PROVIDER;
+  const gmailUser = process.env.GMAIL_USER;
+  const gmailAppPassword = process.env.GMAIL_APP_PASSWORD;
+  const emailFrom =
+    process.env.EMAIL_FROM ||
+    (emailProvider === "mailpit"
+      ? "BlueprInT <noreply@blueprint.local>"
+      : `BlueprInT <${gmailUser}>`);
 
-const transporter =
-  emailProvider === "mailpit"
-    ? nodemailer.createTransport({
-        host: process.env.SMTP_HOST ?? "mailpit",
-        port: Number(process.env.SMTP_PORT ?? 1025),
-        secure: false,
-        ignoreTLS: true,
-      })
-    : gmailUser && gmailAppPassword
-    ? nodemailer.createTransport({
-        service: "gmail",
-        auth: {
-          user: gmailUser,
-          pass: gmailAppPassword,
-        },
-      })
-    : null;
+  const transporter =
+    emailProvider === "mailpit"
+      ? nodemailer.createTransport({
+          host: process.env.SMTP_HOST ?? "mailpit",
+          port: Number(process.env.SMTP_PORT ?? 1025),
+          secure: false,
+          ignoreTLS: true,
+        })
+      : gmailUser && gmailAppPassword
+      ? nodemailer.createTransport({
+          service: "gmail",
+          auth: {
+            user: gmailUser,
+            pass: gmailAppPassword,
+          },
+        })
+      : null;
+
+  return { emailFrom, transporter };
+}
 
 export async function sendVerificationEmail(
   email: string,
   code: string,
   name: string
 ): Promise<void> {
+  const { emailFrom, transporter } = getEmailConfig();
+
   if (!transporter) {
     // Development mode: log to console
     console.log(`\nDevelopment Mode - Verification Code for ${name} (${email}):`);
@@ -44,10 +50,10 @@ export async function sendVerificationEmail(
     await transporter.sendMail({
       from: emailFrom,
       to: email,
-      subject: "BlueprintT - Email Verification Code",
+      subject: "BlueprInT - Email Verification Code",
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px;">
-          <h2>Welcome to BlueprintT, ${name}!</h2>
+          <h2>Welcome to BlueprInT, ${name}!</h2>
           <p>Thank you for signing up. Please verify your email address using the code below:</p>
           <div style="background-color: #f0f0f0; padding: 20px; border-radius: 8px; text-align: center; margin: 20px 0;">
             <h1 style="letter-spacing: 8px; color: #333;">${code}</h1>
