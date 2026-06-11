@@ -13,6 +13,15 @@ function asyncHandler(
   };
 }
 
+function parseStringList(value: unknown) {
+  const values = Array.isArray(value) ? value : value ? [value] : [];
+
+  return values
+    .flatMap((item) => String(item).split(","))
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 router.use(requireAuth);
 
 router.get("/", asyncHandler(async (_req, res) => {
@@ -25,16 +34,26 @@ router.get("/", asyncHandler(async (_req, res) => {
 
 router.get("/search", asyncHandler(async (req, res) => {
   const query = typeof req.query.query === "string" ? req.query.query.trim() : "";
+  const credits = parseStringList(req.query.credits)
+    .map((value) => Number(value))
+    .filter((value) => Number.isInteger(value));
+  const schools = parseStringList(req.query.schools);
+  const terms = parseStringList(req.query.terms);
 
   const modules = await prisma.module.findMany({
-    where: query
-      ? {
-          OR: [
-            { code: { contains: query, mode: "insensitive" } },
-            { name: { contains: query, mode: "insensitive" } },
-          ],
-        }
-      : undefined,
+    where: {
+      ...(query
+        ? {
+            OR: [
+              { code: { contains: query, mode: "insensitive" } },
+              { name: { contains: query, mode: "insensitive" } },
+            ],
+          }
+        : {}),
+      ...(credits.length > 0 ? { credits: { in: credits } } : {}),
+      ...(schools.length > 0 ? { school: { in: schools } } : {}),
+      ...(terms.length > 0 ? { termAvailability: { hasSome: terms } } : {}),
+    },
     orderBy: { code: "asc" },
   });
 
