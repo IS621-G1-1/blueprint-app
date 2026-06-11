@@ -18,6 +18,12 @@ interface ModuleResponse {
   module: Module;
 }
 
+export interface ModuleSearchFilters {
+  credits?: number[];
+  schools?: string[];
+  terms?: string[];
+}
+
 function getAuthHeaders() {
   const token = localStorage.getItem("blueprint_token");
 
@@ -47,7 +53,28 @@ export async function getModules() {
 }
 
 export async function searchModules(query: string) {
-  const params = new URLSearchParams({ query });
+  return searchModulesWithFilters(query);
+}
+
+export async function searchModulesWithFilters(query: string, filters: ModuleSearchFilters = {}) {
+  const params = new URLSearchParams();
+
+  if (query.trim()) {
+    params.set("query", query.trim());
+  }
+
+  filters.credits?.forEach((credit) => {
+    params.append("credits", String(credit));
+  });
+
+  filters.schools?.forEach((school) => {
+    params.append("schools", school);
+  });
+
+  filters.terms?.forEach((term) => {
+    params.append("terms", term);
+  });
+
   const response = await fetch(`${API_BASE_URL}/modules/search?${params.toString()}`, {
     headers: getAuthHeaders(),
   });

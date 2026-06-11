@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { CalendarDays, Clock, Loader2, Plus, Search, Trash2 } from "lucide-react";
+import { CalendarDays, Clock, Loader2, Plus, Search, Trash2, X } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
-import { getModuleDetails, getModules, searchModules } from "@/api/modules";
+import { getModuleDetails, getModules, searchModulesWithFilters } from "@/api/modules";
 import {
   addModuleToSemesterPlan,
   createOrLoadSemesterPlan,
@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 import type { Module, SemesterPlan } from "@/types/planner";
 
 const TERMS = ["Term 1", "Term 2", "Special Term"];
@@ -48,6 +49,18 @@ function DetailField({
   );
 }
 
+function toggleStringValue(values: string[], value: string) {
+  return values.includes(value)
+    ? values.filter((currentValue) => currentValue !== value)
+    : [...values, value];
+}
+
+function toggleNumberValue(values: number[], value: number) {
+  return values.includes(value)
+    ? values.filter((currentValue) => currentValue !== value)
+    : [...values, value];
+}
+
 export function Planner() {
   const [searchParams] = useSearchParams();
   const initialQuery = searchParams.get("query") ?? "";
@@ -56,7 +69,11 @@ export function Planner() {
   const [year, setYear] = useState(getCurrentAcademicYear());
   const [term, setTerm] = useState(TERMS[0]);
   const [query, setQuery] = useState(initialQuery);
+  const [catalogueModules, setCatalogueModules] = useState<Module[]>([]);
   const [modules, setModules] = useState<Module[]>([]);
+  const [selectedCredits, setSelectedCredits] = useState<number[]>([]);
+  const [selectedSchools, setSelectedSchools] = useState<string[]>([]);
+  const [selectedTerms, setSelectedTerms] = useState<string[]>([]);
   const [selectedModuleDetails, setSelectedModuleDetails] = useState<Module | null>(null);
   const [error, setError] = useState("");
   const [detailError, setDetailError] = useState("");
@@ -80,14 +97,55 @@ export function Planner() {
       0,
     ) ?? 0;
 
+  const creditOptions = useMemo(
+    () =>
+      Array.from(new Set(catalogueModules.map((module) => module.credits))).sort(
+        (firstCredit, secondCredit) => firstCredit - secondCredit,
+      ),
+    [catalogueModules],
+  );
+
+  const schoolOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          catalogueModules
+            .map((module) => module.school)
+            .filter((school): school is string => Boolean(school)),
+        ),
+      ).sort(),
+    [catalogueModules],
+  );
+
+  const termOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(catalogueModules.flatMap((module) => module.termAvailability)),
+      ).sort(),
+    [catalogueModules],
+  );
+
+  const activeFilterLabels = [
+    ...selectedCredits.map((credit) => `${credit} credit${credit === 1 ? "" : "s"}`),
+    ...selectedSchools,
+    ...selectedTerms,
+  ];
+
+  const hasActiveFilters =
+    query.trim().length > 0 ||
+    selectedCredits.length > 0 ||
+    selectedSchools.length > 0 ||
+    selectedTerms.length > 0;
+
   useEffect(() => {
     let isMounted = true;
 
     async function loadInitialData() {
       try {
-        const [plans, catalogueModules] = await Promise.all([
+        const [plans, allModules, visibleModules] = await Promise.all([
           getSemesterPlans(),
-          initialQuery ? searchModules(initialQuery) : getModules(),
+          getModules(),
+          initialQuery ? searchModulesWithFilters(initialQuery) : getModules(),
         ]);
 
         if (!isMounted) {
@@ -95,7 +153,8 @@ export function Planner() {
         }
 
         setSemesterPlans(plans);
-        setModules(catalogueModules);
+        setCatalogueModules(allModules);
+        setModules(visibleModules);
 
         if (plans[0]) {
           setSelectedSemesterPlanId(plans[0].id);
@@ -120,6 +179,39 @@ export function Planner() {
       isMounted = false;
     };
   }, [initialQuery]);
+
+  useEffect(() => {
+    if (loadingModules) {
+      return;
+    }
+
+    const searchTimeout = window.setTimeout(() => {
+      setError("");
+      setDetailError("");
+      setSuccess("");
+      setSelectedModuleDetails(null);
+      setSearching(true);
+
+      searchModulesWithFilters(query, {
+        credits: selectedCredits,
+        schools: selectedSchools,
+        terms: selectedTerms,
+      })
+        .then((searchResults) => {
+          setModules(searchResults);
+        })
+        .catch((searchError) => {
+          setError(searchError instanceof Error ? searchError.message : "Module search failed.");
+        })
+        .finally(() => {
+          setSearching(false);
+        });
+    }, 250);
+
+    return () => {
+      window.clearTimeout(searchTimeout);
+    };
+  }, [loadingModules, query, selectedCredits, selectedSchools, selectedTerms]);
 
   function upsertSemesterPlan(plan: SemesterPlan) {
     setSemesterPlans((currentPlans) => {
@@ -164,10 +256,37 @@ export function Planner() {
     setSearching(true);
 
     try {
-      const searchResults = await searchModules(query);
+      const searchResults = await searchModulesWithFilters(query, {
+        credits: selectedCredits,
+        schools: selectedSchools,
+        terms: selectedTerms,
+      });
       setModules(searchResults);
     } catch (searchError) {
       setError(searchError instanceof Error ? searchError.message : "Module search failed.");
+    } finally {
+      setSearching(false);
+      setLoadingModules(false);
+    }
+  }
+
+  async function handleClearFilters() {
+    setError("");
+    setDetailError("");
+    setSuccess("");
+    setQuery("");
+    setSelectedCredits([]);
+    setSelectedSchools([]);
+    setSelectedTerms([]);
+    setSelectedModuleDetails(null);
+    setSearching(true);
+
+    try {
+      const unfilteredModules = await getModules();
+      setCatalogueModules(unfilteredModules);
+      setModules(unfilteredModules);
+    } catch (clearError) {
+      setError(clearError instanceof Error ? clearError.message : "Module search failed.");
     } finally {
       setSearching(false);
       setLoadingModules(false);
@@ -332,9 +451,9 @@ export function Planner() {
             <Card>
               <CardHeader>
                 <CardTitle className="text-xl">Module Search</CardTitle>
-                <CardDescription>Find modules by code or name.</CardDescription>
+                <CardDescription>Find modules by code, name, faculty, credits, or term.</CardDescription>
               </CardHeader>
-              <CardContent>
+              <CardContent className="space-y-5">
                 <form className="flex flex-col gap-3 sm:flex-row" onSubmit={handleSearch}>
                   <Input
                     aria-label="Search module code or name"
@@ -351,6 +470,146 @@ export function Planner() {
                     Search
                   </Button>
                 </form>
+
+                <div className="grid gap-4 lg:grid-cols-3">
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                      Credits
+                    </p>
+                    <div className="space-y-2">
+                      {creditOptions.map((creditOption) => {
+                        const isSelected = selectedCredits.includes(creditOption);
+
+                        return (
+                          <label
+                            className={cn(
+                              "flex min-h-10 cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors",
+                              isSelected
+                                ? "border-accent bg-accent/15 text-accent"
+                                : "border-border bg-background/50 text-muted-foreground hover:border-accent/60 hover:text-foreground",
+                            )}
+                            key={creditOption}
+                          >
+                            <input
+                              checked={isSelected}
+                              className="h-4 w-4 accent-current"
+                              onChange={() =>
+                                setSelectedCredits((currentCredits) =>
+                                  toggleNumberValue(currentCredits, creditOption),
+                                )
+                              }
+                              type="checkbox"
+                            />
+                            {creditOption} credit{creditOption === 1 ? "" : "s"}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                      Teaching Faculty
+                    </p>
+                    <div className="space-y-2">
+                      {schoolOptions.map((schoolOption) => {
+                        const isSelected = selectedSchools.includes(schoolOption);
+
+                        return (
+                          <label
+                            className={cn(
+                              "flex min-h-10 cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors",
+                              isSelected
+                                ? "border-accent bg-accent/15 text-accent"
+                                : "border-border bg-background/50 text-muted-foreground hover:border-accent/60 hover:text-foreground",
+                            )}
+                            key={schoolOption}
+                          >
+                            <input
+                              checked={isSelected}
+                              className="h-4 w-4 accent-current"
+                              onChange={() =>
+                                setSelectedSchools((currentSchools) =>
+                                  toggleStringValue(currentSchools, schoolOption),
+                                )
+                              }
+                              type="checkbox"
+                            />
+                            <span className="leading-5">{schoolOption}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                      Term Availability
+                    </p>
+                    <div className="space-y-2">
+                      {termOptions.map((termOption) => {
+                        const isSelected = selectedTerms.includes(termOption);
+
+                        return (
+                          <label
+                            className={cn(
+                              "flex min-h-10 cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors",
+                              isSelected
+                                ? "border-accent bg-accent/15 text-accent"
+                                : "border-border bg-background/50 text-muted-foreground hover:border-accent/60 hover:text-foreground",
+                            )}
+                            key={termOption}
+                          >
+                            <input
+                              checked={isSelected}
+                              className="h-4 w-4 accent-current"
+                              onChange={() =>
+                                setSelectedTerms((currentTerms) =>
+                                  toggleStringValue(currentTerms, termOption),
+                                )
+                              }
+                              type="checkbox"
+                            />
+                            {termOption}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                {(activeFilterLabels.length > 0 || query.trim()) && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    {query.trim() && (
+                      <span className="rounded-md border border-accent/40 bg-accent/10 px-2 py-1 text-xs font-semibold text-accent">
+                        Search: {query.trim()}
+                      </span>
+                    )}
+                    {activeFilterLabels.map((filterLabel) => (
+                      <span
+                        className="rounded-md border border-accent/40 bg-accent/10 px-2 py-1 text-xs font-semibold text-accent"
+                        key={filterLabel}
+                      >
+                        {filterLabel}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-sm text-muted-foreground">
+                    Showing {modules.length} module{modules.length === 1 ? "" : "s"}
+                  </p>
+                  <Button
+                    disabled={!hasActiveFilters || searching}
+                    onClick={handleClearFilters}
+                    type="button"
+                    variant="outline"
+                  >
+                    <X className="h-4 w-4" />
+                    Clear filters
+                  </Button>
+                </div>
               </CardContent>
             </Card>
 
