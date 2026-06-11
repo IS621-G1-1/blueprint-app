@@ -41,4 +41,23 @@ router.get("/search", asyncHandler(async (req, res) => {
   return res.json({ modules });
 }));
 
+router.get("/:identifier", asyncHandler(async (req, res) => {
+  const identifier = req.params.identifier.trim();
+
+  const module = await prisma.module.findFirst({
+    where: {
+      OR: [
+        { id: identifier },
+        { code: { equals: identifier, mode: "insensitive" } },
+      ],
+    },
+  });
+
+  if (!module) {
+    return res.status(404).json({ error: "Module could not be found." });
+  }
+
+  return res.json({ module });
+}));
+
 export default router;

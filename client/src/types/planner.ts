@@ -5,6 +5,11 @@ export interface Module {
   credits: number;
   description: string | null;
   school: string | null;
+  prerequisites: string | null;
+  termAvailability: string[];
+  schedule: string | null;
+  gradingBasis: string | null;
+  examDates: string | null;
   createdAt: string;
 }
 

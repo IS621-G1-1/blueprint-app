@@ -14,6 +14,10 @@ interface ModulesResponse {
   modules: Module[];
 }
 
+interface ModuleResponse {
+  module: Module;
+}
+
 function getAuthHeaders() {
   const token = localStorage.getItem("blueprint_token");
 
@@ -50,4 +54,13 @@ export async function searchModules(query: string) {
 
   const data = await parseResponse<ModulesResponse>(response);
   return data.modules;
+}
+
+export async function getModuleDetails(identifier: string) {
+  const response = await fetch(`${API_BASE_URL}/modules/${encodeURIComponent(identifier)}`, {
+    headers: getAuthHeaders(),
+  });
+
+  const data = await parseResponse<ModuleResponse>(response);
+  return data.module;
 }
