@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Loader2, Plus, Search, Trash2 } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
 import { getModules, searchModules } from "@/api/modules";
 import {
   addModuleToSemesterPlan,
@@ -31,11 +32,13 @@ function selectClassName() {
 }
 
 export function Planner() {
+  const [searchParams] = useSearchParams();
+  const initialQuery = searchParams.get("query") ?? "";
   const [semesterPlans, setSemesterPlans] = useState<SemesterPlan[]>([]);
   const [selectedSemesterPlanId, setSelectedSemesterPlanId] = useState("");
   const [year, setYear] = useState(getCurrentAcademicYear());
   const [term, setTerm] = useState(TERMS[0]);
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(initialQuery);
   const [modules, setModules] = useState<Module[]>([]);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -62,7 +65,10 @@ export function Planner() {
 
     async function loadInitialData() {
       try {
-        const [plans, catalogueModules] = await Promise.all([getSemesterPlans(), getModules()]);
+        const [plans, catalogueModules] = await Promise.all([
+          getSemesterPlans(),
+          initialQuery ? searchModules(initialQuery) : getModules(),
+        ]);
 
         if (!isMounted) {
           return;
@@ -93,7 +99,7 @@ export function Planner() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [initialQuery]);
 
   function upsertSemesterPlan(plan: SemesterPlan) {
     setSemesterPlans((currentPlans) => {

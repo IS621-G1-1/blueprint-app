@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { BrandWordmark } from "@/components/BrandWordmark";
 import { Separator } from "@/components/ui/separator";
 
 interface AuthShellProps {
@@ -18,8 +19,8 @@ export function AuthShell({
     <main className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top_left,rgba(198,160,72,0.16),transparent_32%),linear-gradient(145deg,#061225_0%,#091b37_48%,#050913_100%)] px-4 py-10">
       <section className="w-full max-w-md">
         <div className="mb-8 text-center">
-          <p className="text-sm font-semibold uppercase tracking-[0.18em] text-accent">
-            BlueprInT
+          <p className="text-sm font-semibold tracking-[0.18em]">
+            <BrandWordmark />
           </p>
           <h1 className="mt-3 text-3xl font-semibold tracking-normal text-foreground">
             Plan your academic journey with clarity.
