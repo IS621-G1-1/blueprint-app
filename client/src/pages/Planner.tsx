@@ -456,8 +456,8 @@ export function Planner() {
               <CardContent className="space-y-5">
                 <form className="flex flex-col gap-3 sm:flex-row" onSubmit={handleSearch}>
                   <Input
-                    aria-label="Search module code or name"
-                    placeholder="Search IS621, software, digital..."
+                    aria-label="Search module code, name, or teaching faculty"
+                    placeholder="Search IS621, software, law..."
                     value={query}
                     onChange={(event) => setQuery(event.target.value)}
                   />

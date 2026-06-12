@@ -107,6 +107,45 @@ const modules = [
     gradingBasis: "Team project, tests, and individual report.",
     examDates: "Final exam: 2026-11-27",
   },
+  {
+    code: "LAW101",
+    name: "Business Law",
+    credits: 1,
+    school: "Yong Pung How School of Law",
+    description:
+      "Introduces legal principles that shape contracts, business obligations, and commercial decision-making.",
+    prerequisites: "None",
+    termAvailability: ["Term 1", "Term 2"],
+    schedule: "Tue/Thu 12:00 PM - 1:30 PM",
+    gradingBasis: "Class participation, written assignment, and final exam.",
+    examDates: "Final exam: 2026-11-25",
+  },
+  {
+    code: "ACCT101",
+    name: "Financial Accounting",
+    credits: 1,
+    school: "School of Accountancy",
+    description:
+      "Covers core accounting concepts, financial statement preparation, and interpretation for business decisions.",
+    prerequisites: "None",
+    termAvailability: ["Term 1", "Term 2"],
+    schedule: "Mon/Wed 10:00 AM - 11:30 AM",
+    gradingBasis: "Quizzes, project, midterm, and final exam.",
+    examDates: "Final exam: 2026-11-22",
+  },
+  {
+    code: "ECON101",
+    name: "Introductory Economics",
+    credits: 1,
+    school: "School of Economics",
+    description:
+      "Explores microeconomic and macroeconomic foundations for markets, policy, and organisational strategy.",
+    prerequisites: "None",
+    termAvailability: ["Term 1"],
+    schedule: "Fri 8:30 AM - 11:45 AM",
+    gradingBasis: "Problem sets, class participation, and final exam.",
+    examDates: "Final exam: 2026-11-29",
+  },
 ];
 
 async function main() {
