@@ -31,6 +31,7 @@ model User {
   createdAt         DateTime   @default(now())
   updatedAt         DateTime   @updatedAt
   semesterPlans     SemesterPlan[]
+  watchlistItems    WatchlistItem[]
 
   @@map("users")
 }
@@ -63,6 +64,7 @@ model Module {
   examDates        String?
   createdAt        DateTime        @default(now())
   plannedModules   PlannedModule[]
+  watchlistItems    WatchlistItem[]
 
   @@map("modules")
 }
@@ -91,4 +93,16 @@ model PlannedModule {
 
   @@unique([semesterPlanId, moduleId])
   @@map("planned_modules")
+}
+
+model WatchlistItem {
+  id        String   @id @default(uuid())
+  userId    String
+  moduleId  String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  module    Module   @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, moduleId])
+  @@map("watchlist_items")
 }

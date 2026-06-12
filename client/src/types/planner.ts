@@ -21,6 +21,14 @@ export interface PlannedModule {
   module: Module;
 }
 
+export interface WatchlistItem {
+  id: string;
+  userId: string;
+  moduleId: string;
+  createdAt: string;
+  module: Module;
+}
+
 export interface SemesterPlan {
   id: string;
   userId: string;
