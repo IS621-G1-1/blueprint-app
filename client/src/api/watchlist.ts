@@ -19,6 +19,10 @@ interface WatchlistItemResponse {
   watchlistItem: WatchlistItem;
 }
 
+interface MessageResponse {
+  message: string;
+}
+
 function getAuthHeaders() {
   const token = localStorage.getItem("blueprint_token");
 
@@ -56,4 +60,13 @@ export async function addModuleToWatchlist(moduleId: string) {
   });
 
   return parseResponse<WatchlistItemResponse>(response);
+}
+
+export async function removeModuleFromWatchlist(watchlistItemId: string) {
+  const response = await fetch(`${API_BASE_URL}/watchlist/${encodeURIComponent(watchlistItemId)}`, {
+    method: "DELETE",
+    headers: getAuthHeaders(),
+  });
+
+  return parseResponse<MessageResponse>(response);
 }

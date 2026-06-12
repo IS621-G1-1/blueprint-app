@@ -24,6 +24,13 @@ export class WatchlistModuleNotFoundError extends Error {
   }
 }
 
+export class WatchlistItemNotFoundError extends Error {
+  constructor() {
+    super("Watchlist item not found");
+    this.name = "WatchlistItemNotFoundError";
+  }
+}
+
 export async function addModuleToWatchlist(
   dataSource: WatchlistDataSource,
   userId: string,
@@ -61,5 +68,26 @@ export async function addModuleToWatchlist(
     include: {
       module: true,
     },
+  });
+}
+
+export async function removeModuleFromWatchlist(
+  dataSource: WatchlistDataSource,
+  userId: string,
+  watchlistItemId: string,
+) {
+  const watchlistItem = await dataSource.watchlistItem.findFirst({
+    where: {
+      id: watchlistItemId,
+      userId,
+    },
+  });
+
+  if (!watchlistItem) {
+    throw new WatchlistItemNotFoundError();
+  }
+
+  await dataSource.watchlistItem.delete({
+    where: { id: watchlistItemId },
   });
 }
