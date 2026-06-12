@@ -1,5 +1,15 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { CalendarDays, Clock, Loader2, Plus, Search, Trash2, X } from "lucide-react";
+import {
+  BookmarkCheck,
+  BookmarkPlus,
+  CalendarDays,
+  Clock,
+  Loader2,
+  Plus,
+  Search,
+  Trash2,
+  X,
+} from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { getModuleDetails, getModules, searchModulesWithFilters } from "@/api/modules";
 import {
@@ -8,6 +18,7 @@ import {
   getSemesterPlans,
   removeModuleFromSemesterPlan,
 } from "@/api/semesterPlans";
+import { addModuleToWatchlist, getWatchlist } from "@/api/watchlist";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,7 +31,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
-import type { Module, SemesterPlan } from "@/types/planner";
+import type { Module, SemesterPlan, WatchlistItem } from "@/types/planner";
 
 const TERMS = ["Term 1", "Term 2", "Special Term"];
 
@@ -65,6 +76,7 @@ export function Planner() {
   const [searchParams] = useSearchParams();
   const initialQuery = searchParams.get("query") ?? "";
   const [semesterPlans, setSemesterPlans] = useState<SemesterPlan[]>([]);
+  const [watchlistItems, setWatchlistItems] = useState<WatchlistItem[]>([]);
   const [selectedSemesterPlanId, setSelectedSemesterPlanId] = useState("");
   const [year, setYear] = useState(getCurrentAcademicYear());
   const [term, setTerm] = useState(TERMS[0]);
@@ -84,6 +96,7 @@ export function Planner() {
   const [searching, setSearching] = useState(false);
   const [loadingModuleDetailsId, setLoadingModuleDetailsId] = useState("");
   const [addingModuleId, setAddingModuleId] = useState("");
+  const [watchlistingModuleId, setWatchlistingModuleId] = useState("");
   const [removingPlannedModuleId, setRemovingPlannedModuleId] = useState("");
 
   const selectedSemesterPlan = useMemo(
@@ -96,6 +109,11 @@ export function Planner() {
       (total, plannedModule) => total + plannedModule.module.credits,
       0,
     ) ?? 0;
+
+  const watchlistModuleIds = useMemo(
+    () => new Set(watchlistItems.map((watchlistItem) => watchlistItem.moduleId)),
+    [watchlistItems],
+  );
 
   const creditOptions = useMemo(
     () =>
@@ -142,10 +160,11 @@ export function Planner() {
 
     async function loadInitialData() {
       try {
-        const [plans, allModules, visibleModules] = await Promise.all([
+        const [plans, allModules, visibleModules, savedWatchlistItems] = await Promise.all([
           getSemesterPlans(),
           getModules(),
           initialQuery ? searchModulesWithFilters(initialQuery) : getModules(),
+          getWatchlist(),
         ]);
 
         if (!isMounted) {
@@ -153,6 +172,7 @@ export function Planner() {
         }
 
         setSemesterPlans(plans);
+        setWatchlistItems(savedWatchlistItems);
         setCatalogueModules(allModules);
         setModules(visibleModules);
 
@@ -331,6 +351,40 @@ export function Planner() {
       setError(addError instanceof Error ? addError.message : "Module could not be added.");
     } finally {
       setAddingModuleId("");
+    }
+  }
+
+  async function handleAddToWatchlist(moduleId: string) {
+    if (watchlistModuleIds.has(moduleId)) {
+      setError("");
+      setDetailError("");
+      setSuccess("Module is already in your watchlist.");
+      return;
+    }
+
+    setError("");
+    setDetailError("");
+    setSuccess("");
+    setWatchlistingModuleId(moduleId);
+
+    try {
+      const response = await addModuleToWatchlist(moduleId);
+      setWatchlistItems((currentItems) => {
+        if (currentItems.some((item) => item.moduleId === response.watchlistItem.moduleId)) {
+          return currentItems;
+        }
+
+        return [response.watchlistItem, ...currentItems];
+      });
+      setSuccess(response.message);
+    } catch (watchlistError) {
+      setError(
+        watchlistError instanceof Error
+          ? watchlistError.message
+          : "Module could not be added to watchlist.",
+      );
+    } finally {
+      setWatchlistingModuleId("");
     }
   }
 
@@ -652,7 +706,7 @@ export function Planner() {
                           {module.description}
                         </p>
                       )}
-                      <div className="grid gap-2 sm:grid-cols-2">
+                      <div className="grid gap-2 sm:grid-cols-3">
                         <Button
                           disabled={loadingModuleDetailsId === module.id}
                           onClick={() => handleViewModuleDetails(module.id)}
@@ -665,6 +719,24 @@ export function Planner() {
                             <Search className="h-4 w-4" />
                           )}
                           View details
+                        </Button>
+                        <Button
+                          disabled={
+                            watchlistModuleIds.has(module.id) ||
+                            watchlistingModuleId === module.id
+                          }
+                          onClick={() => handleAddToWatchlist(module.id)}
+                          type="button"
+                          variant={watchlistModuleIds.has(module.id) ? "secondary" : "outline"}
+                        >
+                          {watchlistingModuleId === module.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : watchlistModuleIds.has(module.id) ? (
+                            <BookmarkCheck className="h-4 w-4" />
+                          ) : (
+                            <BookmarkPlus className="h-4 w-4" />
+                          )}
+                          {watchlistModuleIds.has(module.id) ? "Added" : "Watchlist"}
                         </Button>
                         <Button
                           disabled={addingModuleId === module.id}
@@ -763,6 +835,27 @@ export function Planner() {
                     {selectedModuleDetails.examDates && (
                       <DetailField label="Exam dates" value={selectedModuleDetails.examDates} />
                     )}
+                    <Button
+                      className="w-full"
+                      disabled={
+                        watchlistModuleIds.has(selectedModuleDetails.id) ||
+                        watchlistingModuleId === selectedModuleDetails.id
+                      }
+                      onClick={() => handleAddToWatchlist(selectedModuleDetails.id)}
+                      type="button"
+                      variant={watchlistModuleIds.has(selectedModuleDetails.id) ? "secondary" : "outline"}
+                    >
+                      {watchlistingModuleId === selectedModuleDetails.id ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : watchlistModuleIds.has(selectedModuleDetails.id) ? (
+                        <BookmarkCheck className="h-4 w-4" />
+                      ) : (
+                        <BookmarkPlus className="h-4 w-4" />
+                      )}
+                      {watchlistModuleIds.has(selectedModuleDetails.id)
+                        ? "Added to Watchlist"
+                        : "Add to Watchlist"}
+                    </Button>
                   </>
                 ) : (
                   <p className="rounded-md border border-border bg-background/50 p-4 text-sm text-muted-foreground">

@@ -5,6 +5,7 @@ import cors from "cors";
 import authRoutes from "./routes/auth.routes.js";
 import moduleRoutes from "./routes/module.routes.js";
 import semesterPlanRoutes from "./routes/semesterPlan.routes.js";
+import watchlistRoutes from "./routes/watchlist.routes.js";
 
 config();
 config({ path: resolve(process.cwd(), "../.env") });
@@ -45,6 +46,7 @@ app.get("/health", (_req, res) => {
 app.use("/auth", authRoutes);
 app.use("/modules", moduleRoutes);
 app.use("/semester-plans", semesterPlanRoutes);
+app.use("/watchlist", watchlistRoutes);
 
 // Error handling middleware
 app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
