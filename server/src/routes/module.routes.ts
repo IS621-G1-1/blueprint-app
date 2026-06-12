@@ -47,6 +47,7 @@ router.get("/search", asyncHandler(async (req, res) => {
             OR: [
               { code: { contains: query, mode: "insensitive" } },
               { name: { contains: query, mode: "insensitive" } },
+              { school: { contains: query, mode: "insensitive" } },
             ],
           }
         : {}),
