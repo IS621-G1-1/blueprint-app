@@ -2,7 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 import {
   addModuleToWatchlist,
+  removeModuleFromWatchlist,
   WatchlistDuplicateError,
+  WatchlistItemNotFoundError,
   WatchlistModuleNotFoundError,
 } from "./watchlist.js";
 
@@ -47,7 +49,9 @@ function createDataSource(overrides: {
     },
     watchlistItem: {
       findUnique: vi.fn().mockResolvedValue(existingWatchlistItem),
+      findFirst: vi.fn().mockResolvedValue(existingWatchlistItem),
       create: vi.fn().mockResolvedValue(createdWatchlistItem),
+      delete: vi.fn().mockResolvedValue(existingWatchlistItem),
     },
   } as unknown as Pick<PrismaClient, "module" | "watchlistItem">;
 }
@@ -112,5 +116,46 @@ describe("addModuleToWatchlist", () => {
     ).rejects.toBeInstanceOf(WatchlistModuleNotFoundError);
     expect(dataSource.watchlistItem.findUnique).not.toHaveBeenCalled();
     expect(dataSource.watchlistItem.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("removeModuleFromWatchlist", () => {
+  it("removes a module from the student's watchlist", async () => {
+    const existingWatchlistItem = {
+      id: "33333333-3333-4333-8333-333333333333",
+      userId: "student-1",
+      moduleId: moduleFixture.id,
+      createdAt: new Date("2026-01-03T00:00:00.000Z"),
+    };
+    const dataSource = createDataSource({ existingWatchlistItem });
+
+    await removeModuleFromWatchlist(
+      dataSource,
+      "student-1",
+      existingWatchlistItem.id,
+    );
+
+    expect(dataSource.watchlistItem.findFirst).toHaveBeenCalledWith({
+      where: {
+        id: existingWatchlistItem.id,
+        userId: "student-1",
+      },
+    });
+    expect(dataSource.watchlistItem.delete).toHaveBeenCalledWith({
+      where: { id: existingWatchlistItem.id },
+    });
+  });
+
+  it("rejects missing watchlist items", async () => {
+    const dataSource = createDataSource({});
+
+    await expect(
+      removeModuleFromWatchlist(
+        dataSource,
+        "student-1",
+        "44444444-4444-4444-8444-444444444444",
+      ),
+    ).rejects.toBeInstanceOf(WatchlistItemNotFoundError);
+    expect(dataSource.watchlistItem.delete).not.toHaveBeenCalled();
   });
 });
