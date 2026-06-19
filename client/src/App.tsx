@@ -8,6 +8,7 @@ import { Profile } from "@/pages/Profile";
 import { RegisterPage } from "@/pages/RegisterPage";
 import { Timetable } from "@/pages/Timetable";
 import { VerifyEmailPage } from "@/pages/VerifyEmailPage";
+import { Watchlist } from "@/pages/Watchlist";
 
 function DefaultRedirect() {
   const token = localStorage.getItem("blueprint_token");
@@ -26,6 +27,7 @@ export default function App() {
           <Route path="/dashboard" element={<Home />} />
           <Route path="/home" element={<Home />} />
           <Route path="/planner" element={<Planner />} />
+          <Route path="/watchlist" element={<Watchlist />} />
           <Route path="/timetable" element={<Timetable />} />
           <Route path="/profile" element={<Profile />} />
         </Route>

@@ -5,12 +5,25 @@ export interface Module {
   credits: number;
   description: string | null;
   school: string | null;
+  prerequisites: string | null;
+  termAvailability: string[];
+  schedule: string | null;
+  gradingBasis: string | null;
+  examDates: string | null;
   createdAt: string;
 }
 
 export interface PlannedModule {
   id: string;
   semesterPlanId: string;
+  moduleId: string;
+  createdAt: string;
+  module: Module;
+}
+
+export interface WatchlistItem {
+  id: string;
+  userId: string;
   moduleId: string;
   createdAt: string;
   module: Module;

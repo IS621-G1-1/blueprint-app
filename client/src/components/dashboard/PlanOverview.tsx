@@ -1,19 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { ArrowRight, Loader2 } from "lucide-react";
 import { Link } from "react-router-dom";
-import { getSemesterPlans } from "@/api/semesterPlans";
 import { ModulePill } from "@/components/dashboard/ModulePill";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import type { SemesterPlan } from "@/types/planner";
-
-const placeholderSemesters = [
-  { label: "January 2026", modules: ["IS615", "IS620"], tone: "completed" as const },
-  { label: "April 2026", modules: ["IS621", "IS619"], tone: "current" as const },
-  { label: "July 2026 (Special Term)", modules: ["IS623"], tone: "planned" as const },
-  { label: "August 2026", modules: ["IS630", "IS631"], tone: "planned" as const },
-];
 
 const legend = [
   { label: "Completed", tone: "completed" as const },
@@ -29,44 +21,14 @@ const legendSwatchClassNames = {
   conflict: "border-red-400/50 bg-red-500/30",
 };
 
-export function PlanOverview() {
-  const [semesterPlans, setSemesterPlans] = useState<SemesterPlan[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+interface PlanOverviewProps {
+  isLoading: boolean;
+  semesterPlans: SemesterPlan[];
+}
 
-  useEffect(() => {
-    let isMounted = true;
-
-    async function loadPlans() {
-      try {
-        const plans = await getSemesterPlans();
-
-        if (isMounted) {
-          setSemesterPlans(plans);
-        }
-      } catch {
-        if (isMounted) {
-          setSemesterPlans([]);
-        }
-      } finally {
-        if (isMounted) {
-          setIsLoading(false);
-        }
-      }
-    }
-
-    loadPlans();
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
+export function PlanOverview({ isLoading, semesterPlans }: PlanOverviewProps) {
   const semesterColumns = useMemo(() => {
     const plansWithModules = semesterPlans.filter((plan) => plan.plannedModules.length > 0);
-
-    if (plansWithModules.length === 0) {
-      return placeholderSemesters;
-    }
 
     return plansWithModules.map((plan) => ({
       label: `${plan.year} ${plan.term}`,

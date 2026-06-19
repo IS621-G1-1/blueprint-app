@@ -1,5 +1,5 @@
 import { FormEvent, useState } from "react";
-import { LogOut, User } from "lucide-react";
+import { AlertTriangle, LogOut, User, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import {
   changePassword,
@@ -27,6 +27,7 @@ export function Profile() {
   const [error, setError] = useState<string | null>(null);
   const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   function finishSession() {
@@ -80,10 +81,14 @@ export function Profile() {
     }
   }
 
-  async function handleDeleteAccount(event: FormEvent<HTMLFormElement>) {
+  function handleDeleteAccount(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
     setMessage(null);
+    setIsDeleteDialogOpen(true);
+  }
+
+  async function confirmDeleteAccount() {
     setIsDeletingAccount(true);
 
     try {
@@ -97,6 +102,12 @@ export function Profile() {
       );
     } finally {
       setIsDeletingAccount(false);
+    }
+  }
+
+  function closeDeleteDialog() {
+    if (!isDeletingAccount) {
+      setIsDeleteDialogOpen(false);
     }
   }
 
@@ -211,6 +222,74 @@ export function Profile() {
           </Button>
         </CardContent>
       </Card>
+
+      {isDeleteDialogOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 p-4 backdrop-blur-sm"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              closeDeleteDialog();
+            }
+          }}
+        >
+          <div
+            aria-describedby="delete-account-dialog-description"
+            aria-labelledby="delete-account-dialog-title"
+            aria-modal="true"
+            className="w-full max-w-md rounded-md border border-destructive/40 bg-card p-6 shadow-xl"
+            role="dialog"
+          >
+            <div className="flex items-start gap-4">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-destructive/40 bg-destructive/10 text-destructive">
+                <AlertTriangle className="h-5 w-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h2 id="delete-account-dialog-title" className="text-lg font-semibold">
+                  Delete account?
+                </h2>
+                <p
+                  id="delete-account-dialog-description"
+                  className="mt-2 text-sm leading-6 text-muted-foreground"
+                >
+                  This will permanently delete your account and sign you out. This action cannot be
+                  undone.
+                </p>
+              </div>
+              <Button
+                aria-label="Close delete account confirmation"
+                className="-mr-2 -mt-2"
+                disabled={isDeletingAccount}
+                onClick={closeDeleteDialog}
+                size="icon"
+                type="button"
+                variant="ghost"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+
+            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <Button
+                disabled={isDeletingAccount}
+                onClick={closeDeleteDialog}
+                type="button"
+                variant="outline"
+              >
+                Cancel
+              </Button>
+              <Button
+                disabled={isDeletingAccount}
+                onClick={confirmDeleteAccount}
+                type="button"
+                variant="destructive"
+              >
+                {isDeletingAccount ? "Deleting..." : "Yes, delete account"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -86,20 +86,30 @@ docker compose up -d --build server
 
 > Gmail requires a [Google App Password](https://myaccount.google.com/apppasswords) — not your account password. 2FA must be enabled on the Google account.
 
-## Active development (HMR)
+## Active development (local frontend + local backend)
 
-The compose-built frontend is a production nginx artifact. For HMR:
+Run Postgres and Mailpit in Docker, then run the backend and frontend locally for easier debugging and HMR:
 
 ```bash
-# Keep backend + postgres + mailpit running
-docker compose up -d postgres mailpit server
+# Start infrastructure only
+docker compose up -d postgres mailpit
 
-# Run frontend locally
+# Prepare the server/.env file from the root .env, then migrate and seed
+cd server
+npm run setup:local-env
+npm run prisma:dev
+npm run seed
+npm run dev
+
+# In another terminal, run frontend locally
 cd client
 cp .env.example .env          # sets VITE_API_BASE_URL=http://localhost:4000
 npm install
 npm run dev
 ```
+
+The generated `server/.env` is ignored by Git. It points the local backend at Docker Postgres through `localhost:5432`; the Dockerized backend uses `postgres:5432` through `docker-compose.yaml`.
+For local debugging, `server/.env` uses Mailpit at `localhost:1025` so registration OTPs appear at http://localhost:8025 even if the root `.env` is configured for Gmail.
 
 ## Branching strategy
 
