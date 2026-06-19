@@ -1,7 +1,7 @@
 {
   "name": "blueprint-server",
   "version": "1.0.0",
-  "description": "Express + TypeScript backend for BlueprintT PERN app",
+  "description": "Express + TypeScript backend for Blueprint PERN app",
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
