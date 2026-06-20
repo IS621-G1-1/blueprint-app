@@ -131,8 +131,8 @@ jobs:
       packages: write
     env:
       REGISTRY: ghcr.io
-      CLIENT_IMAGE: ghcr.io/is621-g1-1/blueprint-client
-      SERVER_IMAGE: ghcr.io/is621-g1-1/blueprint-server
+      CLIENT_IMAGE: ghcr.io/is621-g1-1/blueprint-app/client
+      SERVER_IMAGE: ghcr.io/is621-g1-1/blueprint-app/server
     steps:
       - uses: actions/checkout@v4
       - name: Log in to GHCR
