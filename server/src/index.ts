@@ -6,6 +6,7 @@ import authRoutes from "./routes/auth.routes.js";
 import moduleRoutes from "./routes/module.routes.js";
 import semesterPlanRoutes from "./routes/semesterPlan.routes.js";
 import watchlistRoutes from "./routes/watchlist.routes.js";
+import { register, httpRequestCount, httpRequestDuration } from "./lib/metrics.js";
 
 config();
 config({ path: resolve(process.cwd(), "../.env") });
@@ -21,6 +22,18 @@ const CLIENT_ORIGINS = new Set(
 
 CLIENT_ORIGINS.add("http://127.0.0.1:5173");
 CLIENT_ORIGINS.add("http://[::1]:5173");
+
+// Metrics middleware — record every request
+app.use((req, res, next) => {
+  const end = httpRequestDuration.startTimer();
+  res.on("finish", () => {
+    const route = req.route?.path ?? req.path;
+    const labels = { method: req.method, route, status_code: String(res.statusCode) };
+    httpRequestCount.inc(labels);
+    end(labels);
+  });
+  next();
+});
 
 // Middleware
 app.use(express.json());
@@ -41,6 +54,11 @@ app.use(
 // Routes
 app.get("/health", (_req, res) => {
   res.json({ status: "OK", timestamp: new Date().toISOString() });
+});
+
+app.get("/metrics", async (_req, res) => {
+  res.set("Content-Type", register.contentType);
+  res.end(await register.metrics());
 });
 
 app.use("/auth", authRoutes);
