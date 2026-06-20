@@ -1,3 +1,4 @@
+// Server entry point
 import { config } from "dotenv";
 import { resolve } from "node:path";
 import express from "express";
