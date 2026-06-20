@@ -3,8 +3,10 @@ name: release
 # Runs on every merge to main.
 # 1. Reads the bump label on the merged PR (bump:major / bump:minor / bump:patch)
 # 2. Increments the semver tag (defaults to patch if no label)
-# 3. Builds client + server Docker images and pushes to GHCR
-# 4. Creates a GitHub Release with auto-generated notes
+# 3. Builds amd64 images → Trivy scans → Copa patches if CRITICAL CVEs exist
+# 4. Builds arm64 images → assembles multi-arch manifest (using patched amd64 if applicable)
+# 5. Pushes version tag + latest to GHCR — latest is always Copa-clean
+# 6. Creates a GitHub Release with auto-generated notes
 
 on:
   push:
@@ -18,10 +20,16 @@ jobs:
       contents: write    # create git tags + GitHub releases
       packages: write    # push to GHCR
 
+    env:
+      CLIENT_IMAGE: ghcr.io/is621-g1-1/blueprint-app/client
+      SERVER_IMAGE: ghcr.io/is621-g1-1/blueprint-app/server
+
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      # ---- Version calculation ----
 
       - name: Get latest semver tag
         id: latest
@@ -67,6 +75,8 @@ jobs:
           git tag "${{ steps.version.outputs.next }}"
           git push origin "${{ steps.version.outputs.next }}"
 
+      # ---- Registry auth + Buildx ----
+
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
@@ -77,31 +87,167 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build and push — client
+      # ---- Build amd64 images (Copa requires single-arch) ----
+
+      - name: Build and push — client (amd64)
         uses: docker/build-push-action@v6
         with:
           context: ./client
           push: true
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64
           build-args: |
             VITE_API_BASE_URL=${{ vars.VITE_API_BASE_URL || 'http://localhost:4000' }}
-          tags: |
-            ghcr.io/is621-g1-1/blueprint-app/client:${{ steps.version.outputs.next }}
-            ghcr.io/is621-g1-1/blueprint-app/client:latest
+          tags: ${{ env.CLIENT_IMAGE }}:${{ steps.version.outputs.next }}-amd64
           cache-from: type=gha
           cache-to:   type=gha,mode=max
 
-      - name: Build and push — server
+      - name: Build and push — server (amd64)
         uses: docker/build-push-action@v6
         with:
           context: ./server
           push: true
-          platforms: linux/amd64,linux/arm64
-          tags: |
-            ghcr.io/is621-g1-1/blueprint-app/server:${{ steps.version.outputs.next }}
-            ghcr.io/is621-g1-1/blueprint-app/server:latest
+          platforms: linux/amd64
+          tags: ${{ env.SERVER_IMAGE }}:${{ steps.version.outputs.next }}-amd64
           cache-from: type=gha
           cache-to:   type=gha,mode=max
+
+      # ---- Trivy scan amd64 images ----
+
+      - name: Trivy scan — client
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: ${{ env.CLIENT_IMAGE }}:${{ steps.version.outputs.next }}-amd64
+          severity: CRITICAL
+          format: json
+          output: trivy-client.json
+          exit-code: '0'
+
+      - name: Trivy scan — server
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: ${{ env.SERVER_IMAGE }}:${{ steps.version.outputs.next }}-amd64
+          severity: CRITICAL
+          format: json
+          output: trivy-server.json
+          exit-code: '0'
+
+      - name: Count CRITICAL CVEs
+        id: cve-count
+        run: |
+          client=$(jq '[.Results[]?.Vulnerabilities // [] | .[] | select(.Severity=="CRITICAL")] | length' trivy-client.json)
+          server=$(jq '[.Results[]?.Vulnerabilities // [] | .[] | select(.Severity=="CRITICAL")] | length' trivy-server.json)
+          echo "client=$client" >> $GITHUB_OUTPUT
+          echo "server=$server" >> $GITHUB_OUTPUT
+          echo "Client CRITICAL CVEs: $client  |  Server CRITICAL CVEs: $server"
+
+      # ---- Copa patch (only when CVEs found) ----
+
+      - name: Install Copa
+        if: steps.cve-count.outputs.client != '0' || steps.cve-count.outputs.server != '0'
+        run: |
+          curl -fsSL https://github.com/project-copacetic/copacetic/releases/download/v0.14.1/copa_0.14.1_linux_amd64.tar.gz | tar xz
+          sudo mv copa /usr/local/bin/copa
+
+      - name: Copa patch — client
+        if: steps.cve-count.outputs.client != '0'
+        run: |
+          copa patch \
+            -i ${{ env.CLIENT_IMAGE }}:${{ steps.version.outputs.next }}-amd64 \
+            -r trivy-client.json \
+            -t ${{ steps.version.outputs.next }}-amd64-patched \
+            --addr docker-container://buildx_buildkit_default0
+          docker push ${{ env.CLIENT_IMAGE }}:${{ steps.version.outputs.next }}-amd64-patched
+
+      - name: Copa patch — server
+        if: steps.cve-count.outputs.server != '0'
+        run: |
+          copa patch \
+            -i ${{ env.SERVER_IMAGE }}:${{ steps.version.outputs.next }}-amd64 \
+            -r trivy-server.json \
+            -t ${{ steps.version.outputs.next }}-amd64-patched \
+            --addr docker-container://buildx_buildkit_default0
+          docker push ${{ env.SERVER_IMAGE }}:${{ steps.version.outputs.next }}-amd64-patched
+
+      - name: Trivy re-scan — client (post-patch)
+        if: steps.cve-count.outputs.client != '0'
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: ${{ env.CLIENT_IMAGE }}:${{ steps.version.outputs.next }}-amd64-patched
+          severity: CRITICAL
+          format: table
+          exit-code: '1'
+
+      - name: Trivy re-scan — server (post-patch)
+        if: steps.cve-count.outputs.server != '0'
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: ${{ env.SERVER_IMAGE }}:${{ steps.version.outputs.next }}-amd64-patched
+          severity: CRITICAL
+          format: table
+          exit-code: '1'
+
+      # ---- Build arm64 images ----
+
+      - name: Build and push — client (arm64)
+        uses: docker/build-push-action@v6
+        with:
+          context: ./client
+          push: true
+          platforms: linux/arm64
+          build-args: |
+            VITE_API_BASE_URL=${{ vars.VITE_API_BASE_URL || 'http://localhost:4000' }}
+          tags: ${{ env.CLIENT_IMAGE }}:${{ steps.version.outputs.next }}-arm64
+          cache-from: type=gha
+          cache-to:   type=gha,mode=max
+
+      - name: Build and push — server (arm64)
+        uses: docker/build-push-action@v6
+        with:
+          context: ./server
+          push: true
+          platforms: linux/arm64
+          tags: ${{ env.SERVER_IMAGE }}:${{ steps.version.outputs.next }}-arm64
+          cache-from: type=gha
+          cache-to:   type=gha,mode=max
+
+      # ---- Assemble multi-arch manifests ----
+      # amd64 source: patched image if Copa ran, otherwise the original amd64 build
+
+      - name: Assemble manifest — client
+        run: |
+          VERSION="${{ steps.version.outputs.next }}"
+          IMAGE="${{ env.CLIENT_IMAGE }}"
+          if [[ "${{ steps.cve-count.outputs.client }}" != "0" ]]; then
+            AMD64="${IMAGE}:${VERSION}-amd64-patched"
+          else
+            AMD64="${IMAGE}:${VERSION}-amd64"
+          fi
+          docker buildx imagetools create \
+            --tag "${IMAGE}:${VERSION}" \
+            --tag "${IMAGE}:latest" \
+            "${AMD64}" \
+            "${IMAGE}:${VERSION}-arm64"
+
+      - name: Assemble manifest — server
+        run: |
+          VERSION="${{ steps.version.outputs.next }}"
+          IMAGE="${{ env.SERVER_IMAGE }}"
+          if [[ "${{ steps.cve-count.outputs.server }}" != "0" ]]; then
+            AMD64="${IMAGE}:${VERSION}-amd64-patched"
+          else
+            AMD64="${IMAGE}:${VERSION}-amd64"
+          fi
+          docker buildx imagetools create \
+            --tag "${IMAGE}:${VERSION}" \
+            --tag "${IMAGE}:latest" \
+            "${AMD64}" \
+            "${IMAGE}:${VERSION}-arm64"
+
+      # ---- GitHub Release ----
 
       - name: Create GitHub Release
         env:
