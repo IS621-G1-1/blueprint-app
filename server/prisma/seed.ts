@@ -2,12 +2,14 @@ import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
+const school = "School of Computing and Information Systems";
+
 const modules = [
   {
     code: "IS610",
     name: "Digital Transformation Strategy",
     credits: 1,
-    school: "School of Computing and Information Systems",
+    school,
     description:
       "Frameworks for shaping digital transformation portfolios, operating models, and technology-enabled business change.",
     prerequisites: "None",
@@ -20,7 +22,7 @@ const modules = [
     code: "IS611",
     name: "Digital Business Models",
     credits: 1,
-    school: "School of Computing and Information Systems",
+    school,
     description:
       "Analysis of platform, ecosystem, and data-enabled business models for digital enterprises.",
     prerequisites: "None",
@@ -33,7 +35,7 @@ const modules = [
     code: "IS612",
     name: "Business Process Re-engineering",
     credits: 1,
-    school: "School of Computing and Information Systems",
+    school,
     description:
       "Methods for redesigning business processes with automation, analytics, and enterprise systems.",
     prerequisites: "None",
@@ -46,7 +48,7 @@ const modules = [
     code: "IS613",
     name: "Business Requirements Mapping",
     credits: 1,
-    school: "School of Computing and Information Systems",
+    school,
     description:
       "Elicitation, modelling, and prioritisation techniques for translating business needs into digital solution requirements.",
     prerequisites: "None",
@@ -59,7 +61,7 @@ const modules = [
     code: "IS614",
     name: "Enterprise Architecture for Digital Transformation",
     credits: 1,
-    school: "School of Computing and Information Systems",
+    school,
     description:
       "Enterprise architecture principles for aligning applications, data, infrastructure, and transformation roadmaps.",
     prerequisites: "Basic information systems knowledge recommended.",
@@ -72,7 +74,7 @@ const modules = [
     code: "IS615",
     name: "Technology Assessment",
     credits: 1,
-    school: "School of Computing and Information Systems",
+    school,
     description:
       "Evaluation of emerging technologies for feasibility, business value, adoption risk, and implementation readiness.",
     prerequisites: "None",
@@ -85,7 +87,7 @@ const modules = [
     code: "IS616",
     name: "Emerging Technology Synthesis",
     credits: 1,
-    school: "School of Computing and Information Systems",
+    school,
     description:
       "Synthesis of emerging technology trends into practical digital transformation opportunities.",
     prerequisites: "None",
@@ -98,7 +100,7 @@ const modules = [
     code: "IS617",
     name: "Digital Strategies",
     credits: 1,
-    school: "School of Computing and Information Systems",
+    school,
     description:
       "Strategic planning tools for digital channels, data products, transformation governance, and value capture.",
     prerequisites: "None",
@@ -111,7 +113,7 @@ const modules = [
     code: "IS618",
     name: "Business Intelligence and Data Analytics",
     credits: 1,
-    school: "School of Computing and Information Systems",
+    school,
     description:
       "Use of business intelligence, dashboards, and analytics workflows to support transformation decision-making.",
     prerequisites: "Introductory statistics or analytics experience recommended.",
@@ -124,7 +126,7 @@ const modules = [
     code: "IS619",
     name: "Business Application of Digital Technology",
     credits: 1,
-    school: "School of Computing and Information Systems",
+    school,
     description:
       "Applied digital technology use cases across business functions, customer journeys, and operating models.",
     prerequisites: "None",
@@ -137,7 +139,7 @@ const modules = [
     code: "IS620",
     name: "Digital Transformation",
     credits: 1,
-    school: "School of Computing and Information Systems",
+    school,
     description:
       "Core concepts and implementation approaches for technology-led business transformation.",
     prerequisites: "None",
@@ -150,7 +152,7 @@ const modules = [
     code: "IS621",
     name: "Agile and DevSecOps",
     credits: 1,
-    school: "School of Computing and Information Systems",
+    school,
     description:
       "Practices for iterative delivery, secure software operations, and modern development workflows.",
     prerequisites: "Prior software project or programming experience recommended.",
@@ -163,7 +165,7 @@ const modules = [
     code: "IS622",
     name: "Text Analytics and Processing",
     credits: 1,
-    school: "School of Computing and Information Systems",
+    school,
     description:
       "Natural language processing and text analytics techniques for extracting business insight from unstructured data.",
     prerequisites: "Basic programming or analytics experience recommended.",
@@ -176,7 +178,7 @@ const modules = [
     code: "IS623",
     name: "Financial Technology and Innovation",
     credits: 1,
-    school: "School of Computing and Information Systems",
+    school,
     description:
       "Digital finance innovation, fintech platforms, payment systems, and technology-enabled financial services.",
     prerequisites: "None",
@@ -189,7 +191,7 @@ const modules = [
     code: "IS624",
     name: "Digital Marketing",
     credits: 1,
-    school: "School of Computing and Information Systems",
+    school,
     description:
       "Digital marketing capabilities, customer analytics, campaign design, and channel transformation.",
     prerequisites: "None",
@@ -201,13 +203,10 @@ const modules = [
 ];
 
 async function main() {
-  for (const moduleData of modules) {
-    await prisma.module.upsert({
-      where: { code: moduleData.code },
-      update: moduleData,
-      create: moduleData,
-    });
-  }
+  await prisma.$transaction(async (tx) => {
+    await tx.module.deleteMany();
+    await tx.module.createMany({ data: modules });
+  });
 }
 
 main()

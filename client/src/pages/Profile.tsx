@@ -16,6 +16,8 @@ import { Label } from "@/components/ui/label";
 
 const MIN_PASSWORD_LENGTH = 12;
 
+//test branch changes
+
 export function Profile() {
   const navigate = useNavigate();
   const user = readStoredUser();
