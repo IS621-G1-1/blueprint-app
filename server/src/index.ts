@@ -1,3 +1,5 @@
+// Server entry point
+// timeout: 30s
 import { config } from "dotenv";
 import { resolve } from "node:path";
 import express from "express";
